@@ -1,0 +1,3 @@
+# Preserve the exact upstream notices also carried in the published pack.
+kits/power-studio.shrkit/LICENSE-CC-BY-4.0.txt -whitespace
+kits/power-studio.shrkit/SOURCE-VIRTUOSITY.md -whitespace

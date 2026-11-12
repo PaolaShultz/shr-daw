@@ -400,7 +400,8 @@ fn parse_command(value: &str) -> Result<Command> {
 
 /// Compact authored catalog format. Each lane contains comma-separated step
 /// numbers with an optional hit kind suffix: X accent, g ghost, o open hat,
-/// c clap, or r rim. One catalog line is one one-bar groove.
+/// c clap, or r rim. Version 2 also accepts row@note:velocity for any lane.
+/// One catalog line is one one-bar groove.
 pub(crate) fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
     let mut lines = text.lines();
     let version = lines
@@ -409,7 +410,7 @@ pub(crate) fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
         .strip_prefix("SHR-DRUM-CATALOG ")
         .context("not an SHR-DAW drum catalog")?
         .parse::<u8>()?;
-    if version > 1 {
+    if !matches!(version, 1 | 2) {
         bail!("unsupported drum catalog version {version}");
     }
     let mut patterns = Vec::new();
@@ -435,7 +436,7 @@ pub(crate) fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
             rows: vec![[Cell::default(); LANES_PER_PAGE]; row_count],
         };
         for (lane, spec) in fields[3..].iter().enumerate() {
-            parse_lane_spec(&mut pattern, lane, spec)?;
+            parse_lane_spec(&mut pattern, lane, spec, version)?;
         }
         validate(&pattern)?;
         patterns.push(pattern);
@@ -450,7 +451,7 @@ pub(crate) fn decode_catalog(text: &str) -> Result<Vec<DrumPattern>> {
     Ok(patterns)
 }
 
-fn parse_lane_spec(pattern: &mut DrumPattern, lane: usize, spec: &str) -> Result<()> {
+fn parse_lane_spec(pattern: &mut DrumPattern, lane: usize, spec: &str, version: u8) -> Result<()> {
     if spec == "-" {
         return Ok(());
     }
@@ -464,7 +465,19 @@ fn parse_lane_spec(pattern: &mut DrumPattern, lane: usize, spec: &str) -> Result
         if row >= pattern.rows.len() || !occupied.insert(row) {
             bail!("duplicate or out-of-range catalog drum step");
         }
-        let (note, velocity) = catalog_hit(lane, kind)?;
+        let (note, velocity) = if version == 2 && kind.starts_with('@') {
+            let (note, velocity) = kind[1..]
+                .split_once(':')
+                .context("explicit hit needs note:velocity")?;
+            let note = note.parse::<u8>()?;
+            let velocity = velocity.parse::<u8>()?;
+            if note > 127 || !(1..=127).contains(&velocity) {
+                bail!("explicit drum hit outside MIDI range");
+            }
+            (note, velocity)
+        } else {
+            catalog_hit(lane, kind)?
+        };
         pattern.rows[row][lane] = Cell {
             note: Note::On(note),
             velocity: Some(velocity),
@@ -554,7 +567,8 @@ fn add_phrase_fill(pattern: &mut DrumPattern, fill_rows: usize) {
             "Latin" => {
                 if closing || offset.is_multiple_of(2) {
                     if pattern.rows[row][3] == Cell::default() {
-                        pattern.rows[row][3] = note_cell(37, velocity);
+                        pattern.rows[row][3] =
+                            note_cell(if offset.is_multiple_of(2) { 56 } else { 48 }, velocity);
                     } else if matches!(pattern.rows[row][3].note, Note::On(_)) {
                         pattern.rows[row][3].velocity = Some(velocity);
                     }
@@ -567,18 +581,51 @@ fn add_phrase_fill(pattern: &mut DrumPattern, fill_rows: usize) {
                     pattern.rows[row][1] = note_cell(38, velocity.saturating_sub(18));
                 }
                 if row == end - 1 {
-                    pattern.rows[row][2] = note_cell(51, 88);
+                    pattern.rows[row][2] =
+                        note_cell(if pattern.genre == "Jazz" { 59 } else { 53 }, 88);
                 }
             }
             _ => {
                 if closing || offset.is_multiple_of(2) {
-                    let note = [50, 47, 45, 43][offset * 4 / fill_rows];
+                    let note = [48, 47, 45, 41][offset * 4 / fill_rows];
                     pattern.rows[row][3] = note_cell(note, velocity);
                     pattern.rows[row][2] = Cell::default();
                 }
             }
         }
     }
+}
+
+/// Adapt factory grooves to an installed kit without dropping unsupported hits.
+/// Work on a clone so refusal never leaves a partially remapped phrase.
+pub fn adapt_to_notes(pattern: &mut DrumPattern, available: &BTreeSet<u8>) -> Result<usize> {
+    let mut candidate = pattern.clone();
+    let mut changed = 0;
+    for cell in candidate.rows.iter_mut().flatten() {
+        let Note::On(note) = cell.note else { continue };
+        if available.contains(&note) {
+            continue;
+        }
+        let alternatives: &[u8] = match note {
+            35 => &[36],
+            37 | 39 | 40 => &[38],
+            41 | 43 => &[45, 47, 50],
+            48 => &[50, 47, 45],
+            44 | 63 => &[42, 46],
+            52 | 55 | 57 | 60 | 61 | 62 | 65 => &[49, 51, 42],
+            53 | 59 | 64 => &[51, 42],
+            54 | 56 => &[37, 42, 38],
+            _ => &[],
+        };
+        let replacement = alternatives
+            .iter()
+            .find(|n| available.contains(n))
+            .with_context(|| format!("kit has no voice for drum note {note}"))?;
+        cell.note = Note::On(*replacement);
+        changed += 1;
+    }
+    *pattern = candidate;
+    Ok(changed)
 }
 
 fn note_cell(note: u8, velocity: u8) -> Cell {
@@ -684,6 +731,75 @@ mod tests {
                 .len()
                 >= 10
         );
+    }
+
+    #[test]
+    fn explicit_catalog_notes_are_versioned_and_bounded() {
+        let valid = "SHR-DRUM-CATALOG 2\npattern=Rock|4|New|0@36:112|4@40:100|2@53:80|0@60:96\n";
+        let pattern = decode_catalog(valid).unwrap().remove(0);
+        assert_eq!(pattern.rows[0][3].note, Note::On(60));
+        assert_eq!(pattern.rows[2][2].note, Note::On(53));
+        for bad in [
+            valid.replace("CATALOG 2", "CATALOG 1"),
+            valid.replace("@60:96", "@128:96"),
+            valid.replace("@60:96", "@60:0"),
+            valid.replace("0@60:96", "16@60:96"),
+        ] {
+            assert!(decode_catalog(&bad).is_err());
+        }
+    }
+
+    #[test]
+    fn expanded_library_covers_cymbals_and_adapts_without_losing_hits() {
+        let entries = discover()
+            .into_iter()
+            .filter(|e| !e.user)
+            .collect::<Vec<_>>();
+        let old_notes = [36, 38, 45, 47, 50, 42, 46, 49, 51].into_iter().collect();
+        let mut all_notes = BTreeSet::new();
+        for entry in entries {
+            let original = load(&entry).unwrap();
+            let mut adapted = arrange(&original, original.rows.len() * 2, 8).unwrap();
+            for cell in original.rows.iter().flatten() {
+                if let Note::On(n) = cell.note {
+                    all_notes.insert(n);
+                }
+            }
+            let hits = adapted
+                .rows
+                .iter()
+                .flatten()
+                .filter(|c| matches!(c.note, Note::On(_)))
+                .count();
+            adapt_to_notes(&mut adapted, &old_notes).unwrap();
+            assert_eq!(
+                adapted
+                    .rows
+                    .iter()
+                    .flatten()
+                    .filter(|c| matches!(c.note, Note::On(_)))
+                    .count(),
+                hits
+            );
+            assert!(adapted.rows.iter().flatten().all(|c| match c.note {
+                Note::On(n) => old_notes.contains(&n),
+                _ => true,
+            }));
+        }
+        for note in [
+            40, 44, 48, 49, 51, 52, 53, 54, 55, 56, 57, 59, 60, 61, 62, 63, 64, 65,
+        ] {
+            assert!(
+                all_notes.contains(&note),
+                "missing expanded articulation {note}"
+            );
+        }
+        let mut original = decode_catalog(include_str!("../drum-patterns/catalog.shrdrums"))
+            .unwrap()
+            .remove(0);
+        let before = original.clone();
+        assert!(adapt_to_notes(&mut original, &BTreeSet::new()).is_err());
+        assert_eq!(original, before);
     }
 
     #[test]

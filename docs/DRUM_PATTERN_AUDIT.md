@@ -1,259 +1,170 @@
 # Drum-pattern musical data audit
 
-This audit treats the bundled rhythms as editable musical data, not just parser
-fixtures. It covers 108 one-bar catalog entries and 12 standalone `.shdrum`
-files: 120 patterns across twelve label groups, 94 in 4/4 and 26 in 3/4.
+The library contains 108 catalog seeds and 12 standalone patterns. All 120 were
+revoiced for Power Studio's expanded note map. These are original editable
+starting points, not transcriptions or authoritative examples of musical traditions.
+No third-party MIDI or protected recording was transcribed.
 
-## Proven structure
+## Structure and compatibility
 
-- The Rust decoder and arranger load every entry, and the discovery test now
-  requires exactly 120 unique visible bundled names.
-- Rows are 16 for a catalog 4/4 bar and 12 for 3/4. The arranger expands them
-  evenly to 2, 4, or 8 bars (32/64/128 or 24/48/96 rows).
-- Bundled notes use only 36, 37, 38, 39, 42, and 46: the project's kick,
-  side-stick/rim, snare, clap, closed-hat, and open-hat choices. These follow
-  long-established General MIDI-style assignments, but external devices may
-  use another map; the configured percussion input map remains the authority.
-  The MIDI Association describes the default map as an industry convention
-  later standardized by General MIDI: [Default Drum Note Map](https://midi.org/midi-ci-profile-for-default-drum-note-map).
-- Velocities span 48–122. Accents, normal hits, ghosts, rims, claps, and open
-  hats have distinct catalog tiers; standalone patterns use 5–14 distinct
-  velocities each.
-- No bundled cell has an explicit long gate or overlapping note. It inherits
-  the Project gate (80% by default), so the next row is normally clear.
-- Alternating expanded bars receive a restrained pickup when that position is
-  empty. The selected final 4/8/16 rows receive a fill chosen by broad
-  label group, or OFF omits the added fill. Longer fills start with spaced hits.
-  Prefix preservation and file round trips are checked for every catalog entry,
-  phrase length, and fill length.
+Catalog version 2 stores explicit note and velocity per hit; version 1 remains
+readable. Four lanes bound simultaneous events. Catalog bars contain 16 rows in
+4/4 or 12 in 3/4. Arrangement expands to 2, 4 or 8 bars with alternating pickups
+and genre-aware endings. FILL selects the final 4, 8 or 16 rows, or OFF. On a
+32-row phrase those starts are 28, 24 and 16; preceding rows are unchanged.
 
-## Library-extension software validation, 2026-11-11
+The palette includes three distinct crash recordings, two rides and ride bells,
+six tom choices, side-stick, rimshot, clap, pedal/half/open hats, china, splash,
+sizzle, flat-ride crash, tambourine and cowbell. Some sounds are synthesized or
+pitched derivatives: the [pack credits](../kits/power-studio.shrkit/CREDITS.md)
+identify each source. The [note map](../kits/power-studio.shrkit/README.md) is
+canonical. Notes 60–65 are extensions, not General MIDI percussion assignments.
 
-On x86_64 with exact Rust 1.97.1, locked checking and all-target/all-feature
-DEV and REL builds pass. Both profiles pass all 1,264 normal tests; the 14
-opt-in offline tests also pass in the development test profile. The fill
-regressions cover all 108 catalog seeds at all three phrase lengths and fill
-lengths, unchanged prefixes, serialization, invalid bounds, non-writing UI
-choices, and undo. All 21 Python helper tests, 31 isolated audio-policy cases,
-and ten cleared demo arrangements pass. Formatting and whitespace checks pass.
-No audio/hardware playback or physical-controller/listening acceptance was run.
+Factory loads adapt unsupported notes to the selected internal kit without
+silently dropping hits; unsupported mappings refuse the whole edit. User files
+remain exact. Kit-derived extended tail/choke classes preserve user overrides.
+Routes, melody and undo remain covered by integration tests.
 
-## Findings and curation
+## Software validation
 
-The first audit found that two different Bossa entries shared the same visible
-name, so discovery exposed 71 instead of the intended 72. It also found one
-exact data duplicate (`New Orleans Funk` and `Second Line`) and an `Amen
-Inspired` label that invoked a famous recording without helping the workflow.
+Exact Rust 1.97.1 verifies the complete package through the production loader,
+including sample hashes, 30 voices, 171 samples and the decoded-memory bound.
+All 120 patterns use supported Power Studio notes. Tests cover catalog versions,
+invalid data, compatibility mapping, unchanged fill prefixes, serialization and
+undo. Offline render checks cover all voices at three rising velocity levels,
+repeatability, finite output and the output ceiling. No audible or physical
+hardware test is implied; balance and musical preference still need listening.
 
-The safe curation pass:
+The 2026-11-12 x86_64 pass completed locked checking, all-target/all-feature
+DEV and REL builds, and all 1,268 normal tests in both profiles. All 14 opt-in
+offline tests passed in DEV, along with 21 Python helper tests, 31 isolated
+audio-policy cases and ten cleared demo arrangements. Formatting and whitespace
+checks passed; upstream notices retain their original bytes.
 
-- renamed the standalone entry to `Bossa Side-Stick`, making all 72 visible;
-- renamed `New Orleans Funk` to the broader `Crossbeat Funk`;
-- changed the duplicate Jazz entry to `Syncopated Street` and varied one kick
-  placement plus a quiet end ghost;
-- renamed `Amen Inspired` to `Jungle Rim Break`;
-- renamed `Afro Cuban Six` to the narrower `Clave in Three`.
+## Current per-pattern ledger
 
-The per-pattern ledger then exposed eight names that implied 6/8 or triplets
-although the current format renders them as 3/4. `Slow Six`, `Ballad Six`,
-`Techno Triplet`, `Triplet Trap`, `Six Eight Pocket`, `Dub Six`, `Jungle Six`,
-and `Clave Six` now use `Three`/`Three Beat` wording. Their notes and velocities
-did not change. This avoids claiming a compound-meter feel that still needs
-human listening.
+Generated from the shipped musical data. Hit counts describe seed patterns,
+before phrase expansion or added fills. Note numbers refer to the pack map.
 
-After those edits there are no byte-for-byte musical duplicates. A few patterns
-still intentionally share a hit grid while differing in accents and velocity:
-`Dance Pop`/`Deep House`/`House Four on Floor`, `Radio Straight`/`Rock
-Backbeat`, `Warehouse Drive`/`Techno Drive`, and `Hip Hop Sparse`/`Drum and
-Bass Break`. Those are useful dynamic variants, but the demo should not show
-two from the same group.
-
-Genre labels are creative navigation hints, not musicology claims or
-transcriptions. The files were authored as original patterns; no copyrighted
-MIDI or protected recording was transcribed. Culturally specific labels such as
-Samba, Cumbia, Songo, Bossa Nova, and Reggae still require human listening and
-careful presentation. Describe them as inspired editable starting points, not
-authoritative examples of a tradition.
-
-## Musical risks
-
-- Four-on-the-floor patterns place a kick on every beat; a sustained bass on
-  those rows can mask the attack. Leave bass space on beats 1/3, shorten its
-  gate, or choose a sparser kick pattern. SHR-DAW has no side-chain compressor.
-- One-bar seeds are intentionally compact. The arranger adds deterministic
-  variation, but it is not human improvisation; inspect the final fill and edit
-  repetitions before calling an eight-bar phrase finished.
-- Several pairs are near variants. That is appropriate for starting points but
-  weak evidence of breadth if shown back-to-back in the video.
-- Note maps are device-dependent. Confirm that the selected percussion page
-  produces the intended kick/snare/hat sounds before recording.
-- Static timing cannot establish swing, pocket, cultural authenticity, or
-  whether a groove works with the chosen bass line.
-- Dense grids such as `Samba`, `Industrial Pulse`, and `Techno in Three` are
-  credible programmed parts but should not be described as one drummer's
-  literal limb performance without a human playability review.
-
-## Every-pattern evidence ledger
-
-The original ledger below covers the first 72 entries; the extension covers
-the additional 48. `K` is kick-row placement;
-`B` is snare/clap backbeat placement; `H/O/R` counts hat/open-hat/rim events.
-For compact catalog patterns, `A/G` counts explicitly marked accent/ghost
-events. Standalone files show their actual velocity range. Row 0 is the
-downbeat, rows 4/8/12 are quarter-note boundaries in 4/4, and rows 0/4/8 are
-the three beats in 3/4. Every row passed the static meter, range, note-map, and
-gate checks; every row still needs listening.
-
-| Pattern | Label / meter | K rows | B rows | Texture / dynamics |
-|---|---|---|---|---|
-| Arena Backbeat | Rock 4/4 | 0,4,8,10,14 | 4,12 | H8/O0/R1; A4/G0 |
-| Garage Push | Rock 4/4 | 0,3,7,8,11,14 | 4,12,15 | H8/O0/R1; A4/G1 |
-| Half Time Heavy | Rock 4/4 | 0,6,10,14 | 8,15 | H8/O0/R0; A2/G1 |
-| Motorik | Rock 4/4 | 0,4,8,12 | 4,12 | H8/O0/R2; A2/G0 |
-| Power Waltz | Rock 3/4 | 0,6,9 | 4,8 | H6/O0/R1; A2/G0 |
-| Slow Three | Rock 3/4 | 0,5,8 | 4,10 | H6/O0/R1; A2/G0 |
-| Radio Straight | Pop 4/4 | 0,4,8,10 | 4,12 | H8/O0/R0; A3/G0 |
-| Dance Pop | Pop 4/4 | 0,4,8,12 | 4,12 | H8/O4/R0; A2/G0 |
-| Syncopated Verse | Pop 4/4 | 0,3,8,11,14 | 4,12 | H8/O0/R1; A3/G0 |
-| Anthem Chorus | Pop 4/4 | 0,4,7,8,12,14 | 4,12 | H8/O4/R0; A4/G0 |
-| Pop Waltz | Pop 3/4 | 0,4,8 | 4,8 | H6/O0/R0; A3/G0 |
-| Ballad in Three | Pop 3/4 | 0,6 | 4,10 | H6/O0/R1; A3/G0 |
-| Deep House | House 4/4 | 0,4,8,12 | 4,12 | H8/O4/R0; A4/G0 |
-| Classic Piano House | House 4/4 | 0,4,8,12 | 4,12 | H12/O4/R0; A4/G4 |
-| Minimal House | House 4/4 | 0,4,8,12 | 4,12 | H4/O4/R2; A4/G2 |
-| Jackin House | House 4/4 | 0,3,4,7,8,11,12,15 | 4,12 | H8/O4/R0; A4/G0 |
-| Three Floor | House 3/4 | 0,4,8 | 4,8 | H6/O3/R0; A3/G0 |
-| Rolling Three | House 3/4 | 0,3,4,7,8,11 | 4,8 | H6/O3/R0; A3/G0 |
-| Warehouse Drive | Techno 4/4 | 0,4,8,12 | 4,12 | H8/O4/R2; A4/G0 |
-| Industrial Pulse | Techno 4/4 | 0,4,8,12 | 2,4,10,12 | H8/O0/R4; A6/G2 |
-| Broken Techno | Techno 4/4 | 0,3,6,8,11,14 | 4,12 | H8/O0/R2; A4/G0 |
-| Acid Machine | Techno 4/4 | 0,4,7,8,12,15 | 4,12 | H8/O4/R0; A4/G0 |
-| Techno in Three | Techno 3/4 | 0,4,8 | 2,4,6,8,10 | H6/O3/R0; A5/G3 |
-| Broken Three | Techno 3/4 | 0,3,6,8,11 | 4,8 | H6/O0/R2; A3/G0 |
-| Boom Bap Dust | Hip-Hop 4/4 | 0,3,7,8,11,14 | 4,12 | H8/O1/R0; A4/G3 |
-| West Coast Bounce | Hip-Hop 4/4 | 0,6,8,10,15 | 4,12 | H8/O0/R2; A1/G0 |
-| Lo Fi Pocket | Hip-Hop 4/4 | 0,5,8,11,14 | 4,12 | H8/O1/R0; A3/G4 |
-| Trap Half Time | Hip-Hop 4/4 | 0,6,12,13 | 8 | H10/O0/R0; A2/G2 |
-| Boom Bap Three | Hip-Hop 3/4 | 0,3,6,10 | 4,8 | H6/O1/R0; A3/G2 |
-| Trap in Three | Hip-Hop 3/4 | 0,5,9,11 | 6 | H8/O0/R0; A2/G2 |
-| Dry Funk | Funk 4/4 | 0,3,8,9,11,14 | 4,7,12,15 | H8/O2/R0; A3/G4 |
-| Crossbeat Funk | Funk 4/4 | 0,3,6,8,11,14 | 4,10,12 | H8/O0/R2; A3/G1 |
-| P Funk Stomp | Funk 4/4 | 0,2,7,8,10,15 | 4,12 | H8/O2/R2; A4/G0 |
-| Linear Funk | Funk 4/4 | 0,6,8,14 | 4,12 | H4/O0/R4; A3/G0 |
-| Funk in Three | Funk 3/4 | 0,3,6,9 | 4,8,11 | H6/O1/R1; A3/G1 |
-| Three Beat Pocket | Funk 3/4 | 0,5,8,11 | 4,10 | H6/O0/R1; A3/G0 |
-| One Drop | Reggae 4/4 | 8 | 8 | H8/O4/R2; A2/G0 |
-| Steppers | Reggae 4/4 | 0,4,8,12 | 8 | H8/O4/R2; A5/G0 |
-| Rockers | Reggae 4/4 | 0,6,8,14 | 4,12 | H8/O4/R2; A3/G1 |
-| Dancehall | Reggae 4/4 | 0,3,7,10,14 | 4,12 | H8/O1/R2; A3/G0 |
-| Three Drop | Reggae 3/4 | 6 | 6 | H6/O2/R2; A2/G0 |
-| Dub in Three | Reggae 3/4 | 0,8 | 4,10 | H6/O2/R2; A2/G1 |
-| Jungle Rim Break | Breaks 4/4 | 0,6,10,15 | 4,12 | H8/O1/R1; A4/G0 |
-| Two Step DnB | Breaks 4/4 | 0,6,10,15 | 4,12 | H8/O0/R0; A4/G0 |
-| Jungle Chopper | Breaks 4/4 | 0,3,6,10,14 | 4,8,12,15 | H8/O1/R1; A4/G2 |
-| Big Beat | Breaks 4/4 | 0,3,8,10,14 | 4,12 | H8/O0/R2; A4/G0 |
-| Three Step Break | Breaks 3/4 | 0,5,8,11 | 4,10 | H6/O1/R1; A4/G0 |
-| Jungle in Three | Breaks 3/4 | 0,3,7,10 | 4,8,11 | H6/O0/R1; A3/G1 |
-| Bossa Nova | Latin 4/4 | 0,4,8,12 | 4,12 | H8/O0/R5; A3/G2 |
-| Samba | Latin 4/4 | 0,3,4,7,8,11,12,15 | 4,12 | H8/O0/R8; A6/G2 |
-| Songo | Latin 4/4 | 0,6,8,11,14 | 4,12 | H8/O1/R5; A4/G0 |
-| Cumbia | Latin 4/4 | 0,4,8,12 | 4,12 | H8/O0/R4; A4/G0 |
-| Latin Waltz | Latin 3/4 | 0,4,8 | 4,8 | H6/O0/R4; A2/G2 |
-| Clave in Three | Latin 3/4 | 0,5,8,11 | 4,10 | H6/O0/R5; A5/G0 |
-| Swing Ride | Jazz 4/4 | 0,8 | 4,12 | H8/O0/R2; A3/G6 |
-| Jazz Shuffle | Jazz 4/4 | 0,6,8,14 | 4,12 | H8/O0/R0; A4/G5 |
-| Brush Ballad | Jazz 4/4 | 0,8 | 4,12 | H8/O0/R2; A1/G10 |
-| Syncopated Street | Jazz 4/4 | 0,3,7,8,11,14 | 4,10,12,15 | H8/O0/R2; A3/G2 |
-| Jazz Waltz | Jazz 3/4 | 0,8 | 4,10 | H6/O0/R2; A3/G4 |
-| Brushes in Three | Jazz 3/4 | 0,6 | 4,10 | H6/O0/R2; A1/G8 |
-| Rock Backbeat | Rock 4/4 | 0,4,8,10 | 4,12 | H8/O0/R0; velocity 70–116 |
-| House Four on Floor | House 4/4 | 0,4,8,12 | 4,12 | H8/O4/R0; velocity 72–118 |
-| Techno Drive | Techno 4/4 | 0,4,8,12 | 4,12 | H8/O4/R2; velocity 62–122 |
-| Disco Open Hat | Pop 4/4 | 0,4,8,12 | 4,12,15 | H8/O4/R0; velocity 48–116 |
-| Boom Bap | Hip-Hop 4/4 | 0,3,7,8,11 | 4,12 | H8/O1/R0; velocity 58–120 |
-| Hip Hop Sparse | Hip-Hop 4/4 | 0,6,10,15 | 4,12 | H8/O1/R0; velocity 54–118 |
-| Trap Halftime | Hip-Hop 4/4 | 0,6,12,13 | 8 | H10/O1/R0; velocity 48–120 |
-| Funk Syncopated | Funk 4/4 | 0,3,8,9,11 | 4,7,12,15 | H8/O2/R0; velocity 48–120 |
-| Reggae One Drop | Reggae 4/4 | 8 | 8 | H8/O1/R0; velocity 60–112 |
-| Drum and Bass Break | Breaks 4/4 | 0,6,10,15 | 4,12 | H8/O1/R0; velocity 58–122 |
-| Bossa Side-Stick | Latin 4/4 | 0,4,8,12 | — | H8/O0/R5; velocity 54–104 |
-| Waltz 3/4 | Jazz 3/4 | 0 | 4,8 | H3/O1/R0; velocity 68–112 |
-
-## Library extension
-
-These 48 original additions include sparse verses, fuller choruses, ghost-note
-pockets, and broken dance grooves. Garage and Electro add navigation groups.
-They use the same on-grid catalog format; shuffle-oriented names describe
-starting points for the existing swing/groove controls, not baked-in triplets.
-No listening acceptance is claimed.
-
-| Pattern | Label / meter | K rows | B rows | Texture / dynamics |
-|---|---|---|---|---|
-| Tight Verse | Rock 4/4 | 0,8,10 | 4,12 | H8/O0/R0; A3/G4 |
-| Punk Eighths | Rock 4/4 | 0,2,6,8,10,14 | 4,12 | H8/O0/R0; A8/G0 |
-| Stadium Stomp | Rock 4/4 | 0,2,8,10 | 4,12 | H0/O0/R1; A4/G0 |
-| Offbeat Push | Rock 4/4 | 0,3,6,8,11,15 | 4,12 | H8/O2/R1; A4/G0 |
-| Quiet Verse | Pop 4/4 | 0,8 | 4,12 | H8/O0/R0; A1/G4 |
-| Clap Chorus | Pop 4/4 | 0,4,8,12,15 | 4,12 | H8/O2/R1; A2/G0 |
-| Half Time Ballad | Pop 4/4 | 0,7,10 | 8 | H8/O1/R1; A2/G3 |
-| Waltz Lift | Pop 3/4 | 0,3,8 | 4,8,11 | H6/O2/R0; A3/G1 |
-| Organ Pocket | House 4/4 | 0,4,8,12 | 4,12,15 | H4/O4/R4; A4/G1 |
-| Disco Sixteenths | House 4/4 | 0,4,8,12 | 4,12 | H16/O4/R0; A4/G8 |
-| Dub House Space | House 4/4 | 0,4,8,12 | 12 | H4/O2/R2; A4/G2 |
-| Percussive Floor | House 4/4 | 0,4,8,12 | 4,12 | H4/O4/R7; A6/G2 |
-| Minimal Tick | Techno 4/4 | 0,4,8,12 | — | H4/O0/R2; A4/G0 |
-| Offbeat Machinery | Techno 4/4 | 0,4,8,12 | 4,12 | H8/O4/R4; A8/G4 |
-| Broken Warehouse | Techno 4/4 | 0,3,6,9,12,14 | 4,12 | H8/O2/R2; A4/G0 |
-| Tomless Rumble | Techno 4/4 | 0,4,8,12 | 7,15 | H8/O4/R4; A6/G6 |
-| Sparse Head Nod | Hip-Hop 4/4 | 0,7,10 | 4,12 | H6/O0/R0; A3/G2 |
-| Ghost Pocket | Hip-Hop 4/4 | 0,3,8,14 | 4,6,11,12,15 | H8/O1/R0; A4/G4 |
-| Half Time Skitter | Hip-Hop 4/4 | 0,5,11,14 | 8,15 | H11/O0/R1; A1/G4 |
-| Rim And Space | Hip-Hop 4/4 | 0,6,9,15 | 4,12 | H4/O1/R1; A1/G2 |
-| Ghost Sixteenths | Funk 4/4 | 0,3,8,10,14 | 2,4,7,11,12,15 | H14/O2/R0; A4/G10 |
-| Linear Conversation | Funk 4/4 | 0,6,10 | 4,12 | H5/O0/R4; A3/G0 |
-| Deep Pocket | Funk 4/4 | 0,7,8,11 | 4,10,12,14 | H8/O1/R1; A4/G4 |
-| Three Beat Ghosts | Funk 3/4 | 0,3,7,10 | 4,6,8,11 | H6/O1/R0; A3/G2 |
-| Dub Space | Reggae 4/4 | 8 | 8 | H4/O4/R2; A1/G2 |
-| Steppers Rim | Reggae 4/4 | 0,4,8,12 | 8 | H8/O4/R2; A4/G4 |
-| Rockers Pickup | Reggae 4/4 | 0,6,8,11,14 | 8,15 | H8/O2/R2; A3/G1 |
-| Dancehall Bounce | Reggae 4/4 | 0,6,8,14 | 3,7,11,15 | H8/O1/R0; A2/G3 |
-| Rolling Ghost Break | Breaks 4/4 | 0,6,10 | 4,7,9,12,15 | H8/O1/R1; A4/G3 |
-| Half Time Break | Breaks 4/4 | 0,3,10,14 | 8,11,15 | H8/O2/R1; A2/G2 |
-| Snare Displacement | Breaks 4/4 | 0,6,8,14 | 4,11,15 | H8/O0/R2; A4/G1 |
-| Syncopated Breakbeat | Breaks 4/4 | 0,3,7,10,14 | 4,12 | H8/O2/R2; A3/G0 |
-| Soft Bossa Pocket | Latin 4/4 | 0,6,8,14 | 4,12 | H8/O0/R5; A2/G6 |
-| Rim Dance | Latin 4/4 | 0,8 | 4,12 | H8/O0/R6; A4/G0 |
-| Cumbia Space | Latin 4/4 | 0,8 | 4,12 | H4/O4/R6; A4/G0 |
-| Three Beat Percussion | Latin 3/4 | 0,6,10 | 4,8 | H6/O1/R6; A4/G3 |
-| Light Comping | Jazz 4/4 | 0,8 | 3,10,14 | H8/O0/R0; A2/G9 |
-| Broken Brush Pocket | Jazz 4/4 | 0,7,10 | 4,12,15 | H8/O0/R1; A0/G11 |
-| Sparse Jazz Waltz | Jazz 3/4 | 0 | 4,9 | H6/O0/R1; A2/G6 |
-| Three Beat Comping | Jazz 3/4 | 0,7 | 3,8,11 | H6/O0/R1; A1/G8 |
-| Two Step Pocket | Garage 4/4 | 0,6,10,15 | 4,12 | H8/O2/R1; A1/G2 |
-| Skipping Hats | Garage 4/4 | 0,7,10,14 | 4,12 | H10/O2/R2; A1/G4 |
-| Four Floor Shuffle | Garage 4/4 | 0,4,8,12 | 4,12 | H8/O4/R2; A4/G4 |
-| Rim Step | Garage 4/4 | 0,3,10,14 | 4,12 | H8/O2/R2; A1/G4 |
-| Robot Break | Electro 4/4 | 0,3,6,10,14 | 4,12 | H8/O2/R2; A1/G0 |
-| Sparse Circuit | Electro 4/4 | 0,6,11 | 4,12 | H4/O2/R3; A3/G0 |
-| Machine Funk | Electro 4/4 | 0,3,8,10,15 | 4,12 | H10/O2/R1; A2/G2 |
-| Half Time Voltage | Electro 4/4 | 0,6,10,13 | 8 | H9/O2/R2; A1/G1 |
-
-## Demo shortlist
-
-These are structurally differentiated candidates, not listening results:
-
-| Pattern | Why it is a useful demo candidate | What to check by ear |
-|---|---|---|
-| Syncopated Verse | Clear backbeat, syncopated kick, modest rim pickup | Does it feel active without fighting the bass? |
-| Deep House | Immediately legible four-on-floor and open hats | Are kick/hat levels balanced on the chosen device? |
-| Dry Funk | Accents, ghosts, open hats, and a syncopated kick show editing depth | Does the deterministic fill feel natural? |
-| Trap Half Time | Obvious half-time space and fine hat detail | Is the label and feel convincing rather than generic? |
-| Jungle Rim Break | Broken kick, backbeat, open hat, and rim show contrast | Does it become rushed at the demo tempo? |
-| Bossa Side-Stick | Distinct side-stick lane and quieter dynamics | Present only as an inspired starting point; check feel carefully |
-| Jazz Waltz | Demonstrates 3/4 and a sparse three-beat shape | Does the open hat on beat 3 support the phrase? |
-
-For the safest first demo, audition `Syncopated Verse` and `Dry Funk` at
-100–116 BPM, then select one. The human should approve the groove, fill, drum
-mapping, and bass relationship. Codex assisted with pattern design, structural
-analysis, duplicate detection, and shortlist formation; it did not hear the
-result.
+| Pattern | Genre | Meter | Hits | Notes | Velocity range |
+| --- | --- | --- | ---: | --- | --- |
+| Arena Backbeat | Rock | 4/4 | 18 | 36,38,44,48,49,51 | 78–118 |
+| Garage Push | Rock | 4/4 | 21 | 36,38,40,42,45,47,55,57 | 54–118 |
+| Half Time Heavy | Rock | 4/4 | 17 | 36,38,41,53,59,60 | 54–118 |
+| Motorik | Rock | 4/4 | 17 | 36,38,49,51,57,64 | 78–118 |
+| Power Waltz | Rock | 3/4 | 13 | 36,38,44,49,51 | 78–118 |
+| Slow Three | Rock | 3/4 | 13 | 36,40,42,55,57 | 78–118 |
+| Radio Straight | Pop | 4/4 | 18 | 36,38,42,54 | 78–118 |
+| Dance Pop | Pop | 4/4 | 17 | 36,39,42,55,57,61,63 | 78–118 |
+| Syncopated Verse | Pop | 4/4 | 18 | 36,38,44,48,59,60 | 78–118 |
+| Anthem Chorus | Pop | 4/4 | 20 | 36,38,42,46,49,54,55 | 78–118 |
+| Pop Waltz | Pop | 3/4 | 14 | 36,38,42,54 | 78–118 |
+| Ballad in Three | Pop | 3/4 | 11 | 35,38,42,55 | 68–118 |
+| Deep House | House | 4/4 | 18 | 36,39,42,46,54,56 | 78–118 |
+| Classic Piano House | House | 4/4 | 23 | 36,39,42,54,60,63 | 54–118 |
+| Minimal House | House | 4/4 | 13 | 36,37,38,44,46,53 | 54–118 |
+| Jackin House | House | 4/4 | 22 | 36,39,42,46,55,56,57 | 78–118 |
+| Three Floor | House | 3/4 | 14 | 36,39,42,54,56,63 | 78–118 |
+| Rolling Three | House | 3/4 | 18 | 36,39,42,46,54,60 | 78–118 |
+| Warehouse Drive | Techno | 4/4 | 17 | 36,38,42,46,52,56 | 78–118 |
+| Industrial Pulse | Techno | 4/4 | 20 | 36,38,42,53,56 | 54–118 |
+| Broken Techno | Techno | 4/4 | 19 | 36,38,52,55,57,59 | 78–118 |
+| Acid Machine | Techno | 4/4 | 20 | 36,38,41,42,45,46 | 78–118 |
+| Techno in Three | Techno | 3/4 | 16 | 36,38,42,52,56,63 | 54–118 |
+| Broken Three | Techno | 3/4 | 16 | 36,38,42,53,56 | 78–118 |
+| Boom Bap Dust | Hip-Hop | 4/4 | 19 | 36,37,38,42,44,46,60 | 54–118 |
+| West Coast Bounce | Hip-Hop | 4/4 | 19 | 36,37,39,42,54 | 78–118 |
+| Lo Fi Pocket | Hip-Hop | 4/4 | 18 | 35,38,42,44,46,55,61 | 54–118 |
+| Trap Half Time | Hip-Hop | 4/4 | 17 | 36,38,42,53,56 | 54–118 |
+| Boom Bap Three | Hip-Hop | 3/4 | 14 | 36,38,42,44,60,63 | 54–118 |
+| Trap in Three | Hip-Hop | 3/4 | 16 | 36,37,38,42,54 | 54–118 |
+| Dry Funk | Funk | 4/4 | 22 | 36,38,42,46,54,56 | 54–118 |
+| Crossbeat Funk | Funk | 4/4 | 20 | 36,38,49,51,53 | 54–118 |
+| P Funk Stomp | Funk | 4/4 | 19 | 36,38,42,44,46,55,57 | 78–118 |
+| Linear Funk | Funk | 4/4 | 14 | 36,37,38,56,59 | 78–118 |
+| Funk in Three | Funk | 3/4 | 16 | 36,38,42,54,56,63 | 54–118 |
+| Three Beat Pocket | Funk | 3/4 | 14 | 36,38,49,51,53 | 78–118 |
+| One Drop | Reggae | 4/4 | 14 | 36,37,38,42,44,46 | 78–118 |
+| Steppers | Reggae | 4/4 | 16 | 36,38,42,53,55,60,63 | 78–118 |
+| Rockers | Reggae | 4/4 | 17 | 36,37,38,48,59 | 54–118 |
+| Dancehall | Reggae | 4/4 | 19 | 36,38,42,46,54,56 | 78–118 |
+| Three Drop | Reggae | 3/4 | 11 | 36,37,38,42,44,63 | 78–118 |
+| Dub in Three | Reggae | 3/4 | 12 | 36,38,42,46,53,60 | 54–118 |
+| Jungle Rim Break | Breaks | 4/4 | 17 | 36,38,40,49,51,55 | 78–118 |
+| Two Step DnB | Breaks | 4/4 | 18 | 36,40,42,44,48,53,57 | 78–118 |
+| Jungle Chopper | Breaks | 4/4 | 20 | 36,38,40,52,55,59 | 54–118 |
+| Big Beat | Breaks | 4/4 | 19 | 36,38,42,54,60,61 | 78–118 |
+| Three Step Break | Breaks | 3/4 | 14 | 36,38,49,51,55 | 78–118 |
+| Jungle in Three | Breaks | 3/4 | 16 | 36,38,40,42,44,53,57 | 54–118 |
+| Bossa Nova | Latin | 4/4 | 19 | 36,37,38,42,56 | 54–118 |
+| Samba | Latin | 4/4 | 26 | 36,38,51,54,56 | 54–118 |
+| Songo | Latin | 4/4 | 20 | 36,38,42,45,46,48,56 | 78–118 |
+| Cumbia | Latin | 4/4 | 18 | 36,38,42,54,56 | 78–118 |
+| Latin Waltz | Latin | 3/4 | 15 | 36,37,38,42,56 | 54–118 |
+| Clave in Three | Latin | 3/4 | 18 | 36,38,51,54,56 | 78–118 |
+| Swing Ride | Jazz | 4/4 | 15 | 36,38,44,51,53 | 54–118 |
+| Jazz Shuffle | Jazz | 4/4 | 17 | 36,38,44,59,62 | 54–118 |
+| Brush Ballad | Jazz | 4/4 | 15 | 35,37,38,44,51 | 54–118 |
+| Syncopated Street | Jazz | 4/4 | 22 | 36,38,44,59,64,65 | 54–118 |
+| Jazz Waltz | Jazz | 3/4 | 12 | 36,38,44,51,53 | 54–118 |
+| Brushes in Three | Jazz | 3/4 | 11 | 35,38,44,59 | 54–118 |
+| Tight Verse | Rock | 4/4 | 16 | 36,38,41,53,59,60 | 54–118 |
+| Punk Eighths | Rock | 4/4 | 19 | 36,38,49,51,57,64 | 78–118 |
+| Stadium Stomp | Rock | 4/4 | 9 | 36,38,44,48,49 | 78–118 |
+| Offbeat Push | Rock | 4/4 | 20 | 36,40,42,45,46,47,55,57 | 78–118 |
+| Quiet Verse | Pop | 4/4 | 14 | 35,37,44,48,59 | 54–118 |
+| Clap Chorus | Pop | 4/4 | 19 | 36,39,42,49,54,55,63 | 78–118 |
+| Half Time Ballad | Pop | 4/4 | 16 | 35,38,42,46,54 | 54–118 |
+| Waltz Lift | Pop | 3/4 | 14 | 36,38,42,46,55,57 | 54–118 |
+| Organ Pocket | House | 4/4 | 14 | 36,37,38,39,44,46,53 | 54–118 |
+| Disco Sixteenths | House | 4/4 | 26 | 36,39,42,55,56,57,63 | 54–118 |
+| Dub House Space | House | 4/4 | 13 | 35,39,42,46,54,56 | 54–118 |
+| Percussive Floor | House | 4/4 | 15 | 36,39,46,54,60 | 78–118 |
+| Minimal Tick | Techno | 4/4 | 11 | 36,52,55,57,59 | 78–118 |
+| Offbeat Machinery | Techno | 4/4 | 18 | 36,38,41,42,45,63 | 54–118 |
+| Broken Warehouse | Techno | 4/4 | 19 | 36,38,42,46,52,56 | 78–118 |
+| Tomless Rumble | Techno | 4/4 | 18 | 36,38,42,46,53,56 | 54–118 |
+| Sparse Head Nod | Hip-Hop | 4/4 | 14 | 35,38,42,44,55,61 | 54–118 |
+| Ghost Pocket | Hip-Hop | 4/4 | 19 | 36,38,42,53,56,63 | 54–118 |
+| Half Time Skitter | Hip-Hop | 4/4 | 20 | 36,37,38,39,42,44,60 | 54–118 |
+| Rim And Space | Hip-Hop | 4/4 | 14 | 35,37,42,46,54 | 54–118 |
+| Ghost Sixteenths | Funk | 4/4 | 28 | 36,38,42,44,46,55,57 | 54–118 |
+| Linear Conversation | Funk | 4/4 | 14 | 36,37,38,56,59 | 78–118 |
+| Deep Pocket | Funk | 4/4 | 20 | 36,38,42,46,54,56 | 54–118 |
+| Three Beat Ghosts | Funk | 3/4 | 16 | 36,38,49,51,53 | 54–118 |
+| Dub Space | Reggae | 4/4 | 9 | 35,37,48,59 | 68–118 |
+| Steppers Rim | Reggae | 4/4 | 17 | 36,37,42,54,56,63 | 54–118 |
+| Rockers Pickup | Reggae | 4/4 | 19 | 36,37,38,42,44,46 | 54–118 |
+| Dancehall Bounce | Reggae | 4/4 | 19 | 36,39,42,46,53,55,60 | 54–118 |
+| Rolling Ghost Break | Breaks | 4/4 | 19 | 36,38,40,52,55,59 | 54–118 |
+| Half Time Break | Breaks | 4/4 | 19 | 36,38,42,54,60,61,63 | 54–118 |
+| Snare Displacement | Breaks | 4/4 | 18 | 36,38,40,49,51,55 | 54–118 |
+| Syncopated Breakbeat | Breaks | 4/4 | 19 | 36,40,42,44,46,48,53,57 | 78–118 |
+| Soft Bossa Pocket | Latin | 4/4 | 19 | 35,38,42,45,48,56 | 54–118 |
+| Rim Dance | Latin | 4/4 | 16 | 36,37,42,54,56 | 78–118 |
+| Cumbia Space | Latin | 4/4 | 13 | 35,37,38,46,56 | 68–118 |
+| Three Beat Percussion | Latin | 3/4 | 17 | 36,37,51,54,56 | 78–118 |
+| Light Comping | Jazz | 4/4 | 16 | 35,37,38,44,51 | 54–92 |
+| Broken Brush Pocket | Jazz | 4/4 | 17 | 35,38,44,59,64 | 54–92 |
+| Sparse Jazz Waltz | Jazz | 3/4 | 11 | 35,38,44,51,53 | 54–92 |
+| Three Beat Comping | Jazz | 3/4 | 13 | 36,38,44,59,62 | 54–100 |
+| Two Step Pocket | Garage | 4/4 | 18 | 36,37,39,42,44,46,55 | 54–118 |
+| Skipping Hats | Garage | 4/4 | 19 | 36,39,42,54,60,61,63 | 54–118 |
+| Four Floor Shuffle | Garage | 4/4 | 18 | 36,39,44,53,56,59 | 54–118 |
+| Rim Step | Garage | 4/4 | 17 | 36,37,42,46,55,57 | 54–118 |
+| Robot Break | Electro | 4/4 | 18 | 36,39,42,46,52,55,56 | 78–118 |
+| Sparse Circuit | Electro | 4/4 | 12 | 35,38,53,56,59,64 | 68–118 |
+| Machine Funk | Electro | 4/4 | 20 | 36,39,42,46,54,60,61 | 54–118 |
+| Half Time Voltage | Electro | 4/4 | 18 | 36,39,41,42,46,48,55,56 | 54–118 |
+| Rock Backbeat | Rock | 4/4 | 17 | 36,38,41,53,59,60 | 70–116 |
+| House Four on Floor | House | 4/4 | 17 | 36,37,39,42,44,53,63 | 72–118 |
+| Techno Drive | Techno | 4/4 | 17 | 36,38,52,55,57,59 | 68–122 |
+| Disco Open Hat | Pop | 4/4 | 18 | 36,38,44,48,59,60 | 48–116 |
+| Boom Bap | Hip-Hop | 4/4 | 18 | 36,38,42,44,55,61,63 | 58–120 |
+| Hip Hop Sparse | Hip-Hop | 4/4 | 16 | 35,38,42,46,53,56 | 54–118 |
+| Trap Halftime | Hip-Hop | 4/4 | 18 | 36,37,38,42,44,46,60 | 48–120 |
+| Funk Syncopated | Funk | 4/4 | 20 | 36,38,42,44,55,57,63 | 48–120 |
+| Reggae One Drop | Reggae | 4/4 | 13 | 36,37,38,48,59 | 60–112 |
+| Drum and Bass Break | Breaks | 4/4 | 17 | 36,38,40,52,55,59 | 58–122 |
+| Bossa Side-Stick | Latin | 4/4 | 17 | 36,42,45,48,56 | 54–104 |
+| Waltz 3/4 | Jazz | 3/4 | 8 | 36,37,38,44,51 | 68–112 |

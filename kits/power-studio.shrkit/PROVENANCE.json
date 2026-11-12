@@ -1,0 +1,1374 @@
+{
+  "recipe_sha256": "5a98b0acad038506bc4678793853dc479fe025cec3f9f078039c72da5514e1e1",
+  "decoded_bytes": 175471144,
+  "samples": [
+    {
+      "output": "samples/035-kick-tight-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumR/9-KdrumR.wav",
+      "source_sha256": "b029e1fec1f70a46b6540745518f66d98f914b4290661b1e001f7d716362ac2c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6043984377374152,
+      "rms": 0.07449940902762303
+    },
+    {
+      "output": "samples/035-kick-tight-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumR/11-KdrumR.wav",
+      "source_sha256": "67ceb942333737940189871647bfb5a2b78000d4fb4320dbfb789621b570a12d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6399978118054229,
+      "rms": 0.07655790708495645
+    },
+    {
+      "output": "samples/035-kick-tight-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumR/17-KdrumR.wav",
+      "source_sha256": "fd9dedf26e977b23ee024a65022e552e025e8a008010550b9da1dce732d42d7b",
+      "licence": "CC-BY-4.0",
+      "peak": 0.661581731631874,
+      "rms": 0.08863773935354023
+    },
+    {
+      "output": "samples/035-kick-tight-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumR/19-KdrumR.wav",
+      "source_sha256": "179a1cf4f9cdbad83c7cde171cd9c78604f8022ce80e46158ad0fd4564ed5861",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6883648955256988,
+      "rms": 0.10121781651002666
+    },
+    {
+      "output": "samples/035-kick-tight-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumR/21-KdrumR.wav",
+      "source_sha256": "4741757ba5c6d955285901894d58e9368fe9f87e8de1ddc0b9b3bb6ea0a3e240",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6890385600206606,
+      "rms": 0.1042443718189626
+    },
+    {
+      "output": "samples/035-kick-tight-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumR/23-KdrumR.wav",
+      "source_sha256": "8ea0ef8c21498b1fee0c7dacee57d949da56aacca6c09122c60c5424cbaad5fa",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6916624715138165,
+      "rms": 0.10030011922352539
+    },
+    {
+      "output": "samples/036-kick-power-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumL/8-KdrumL.wav",
+      "source_sha256": "1e3aef8254b2bc9fa8bbf6bb615007d48ccad9e24fa683449e45392209c43b74",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6483005133282298,
+      "rms": 0.05502114914115887
+    },
+    {
+      "output": "samples/036-kick-power-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumL/10-KdrumL.wav",
+      "source_sha256": "a91899ccf5613887c0dc91bc3c9f506bdd8e581c0e0662d075df52c05b351c0c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6511922050510549,
+      "rms": 0.0555177134555997
+    },
+    {
+      "output": "samples/036-kick-power-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumL/16-KdrumL.wav",
+      "source_sha256": "14c098f08f9e1f03da92058e605647e83cefa2dd6a6ac78c6f56ac820c5c5aa9",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6811589793755278,
+      "rms": 0.06841409420648975
+    },
+    {
+      "output": "samples/036-kick-power-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumL/17-KdrumL.wav",
+      "source_sha256": "6137311aa9db19f4c945eaac153fa2e0a2439ebc5d5f004092c813e67e98079d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6856110010304695,
+      "rms": 0.06741781024256384
+    },
+    {
+      "output": "samples/036-kick-power-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumL/20-KdrumL.wav",
+      "source_sha256": "cdc20a002730a3515ce69a9d2e44d1190ff8bf6623c21321cff6775657db2eb7",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6876397699436623,
+      "rms": 0.0717076115999669
+    },
+    {
+      "output": "samples/036-kick-power-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/KdrumL/21-KdrumL.wav",
+      "source_sha256": "f16ac44d909c620c2730c3c339e3739bf252afad3a9a39fd4880690584d54e6a",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6909376345282735,
+      "rms": 0.07057605914470357
+    },
+    {
+      "output": "samples/037-side-stick-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/snare/oh_snare_crossstick_vl4.flac",
+      "source_sha256": "02444cdbd262ef63a3718cd76ab1212395240b6813659d6de630ae6121e19486",
+      "licence": "CC0-1.0",
+      "peak": 0.08943565519292977,
+      "rms": 0.0044054036601264696
+    },
+    {
+      "output": "samples/037-side-stick-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/snare/oh_snare_crossstick_vl9.flac",
+      "source_sha256": "0d5cece5536344213f822795bc0061b7a1e25deddc00a31cca5ad10dc6952cdd",
+      "licence": "CC0-1.0",
+      "peak": 0.40273627079273433,
+      "rms": 0.019106131268451957
+    },
+    {
+      "output": "samples/037-side-stick-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/snare/oh_snare_crossstick_vl15.flac",
+      "source_sha256": "bf08b805105a6b1eb5742b0ea0c9fd7c60cb87a5b3da5216a41cd8cacc78886b",
+      "licence": "CC0-1.0",
+      "peak": 0.6476744718295931,
+      "rms": 0.039207697324596606
+    },
+    {
+      "output": "samples/038-snare-power-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Snare1/20-Snare.wav",
+      "source_sha256": "ec405bee434898ab5d0f5c63cbf52f11511cb625779b354fd5f8498ec39514a1",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5286994378743803,
+      "rms": 0.0330882913407494
+    },
+    {
+      "output": "samples/038-snare-power-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Snare1/25-Snare.wav",
+      "source_sha256": "6cf733117debc4387012d05f0d8ea761f9a8e591a406a620ca9c07374ca9820b",
+      "licence": "CC-BY-4.0",
+      "peak": 0.513723841979627,
+      "rms": 0.03408340782593073
+    },
+    {
+      "output": "samples/038-snare-power-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Snare1/39-Snare.wav",
+      "source_sha256": "06d2398087a94d4f67f0e7aed167be089be7e399551bb31fd4d4960464d2403c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6306430118247058,
+      "rms": 0.0480301371684096
+    },
+    {
+      "output": "samples/038-snare-power-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Snare1/42-Snare.wav",
+      "source_sha256": "c431eb76626523e552cc48af0c849da6cf6776eb855db82dccf85f00b8777d34",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6474757989998905,
+      "rms": 0.05109342254919565
+    },
+    {
+      "output": "samples/038-snare-power-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Snare1/48-Snare.wav",
+      "source_sha256": "20dd5cc891678825bce34fd99693ab2c4eea4ebd38b2192498d1c6f42baed082",
+      "licence": "CC-BY-4.0",
+      "peak": 0.670668101452592,
+      "rms": 0.05250920186672868
+    },
+    {
+      "output": "samples/038-snare-power-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Snare1/51-Snare.wav",
+      "source_sha256": "e1ec5963e455d859d1140dbcf41366e390e6ee7bfad02d6f8737816cdb869486",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6874005248485593,
+      "rms": 0.05551208067231096
+    },
+    {
+      "output": "samples/039-clap-v001-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5297066372425215,
+      "rms": 0.04778002052522295
+    },
+    {
+      "output": "samples/039-clap-v001-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5729587546494098,
+      "rms": 0.0471347113506714
+    },
+    {
+      "output": "samples/039-clap-v043-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6388724044609276,
+      "rms": 0.06580468597833607
+    },
+    {
+      "output": "samples/039-clap-v043-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6568341889468452,
+      "rms": 0.06479569716069958
+    },
+    {
+      "output": "samples/039-clap-v086-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6976468094081023,
+      "rms": 0.07921665551287002
+    },
+    {
+      "output": "samples/039-clap-v086-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.67649080830601,
+      "rms": 0.07909352667313883
+    },
+    {
+      "output": "samples/040-snare-rimshot-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/snare/oh_snare_rimshot_vl3.flac",
+      "source_sha256": "e842a2615ba8eb6fbbe7da206d640fc6a8829d7848329e82b7a4cf747aa0c9bd",
+      "licence": "CC0-1.0",
+      "peak": 0.19982314081985558,
+      "rms": 0.009990798702043094
+    },
+    {
+      "output": "samples/040-snare-rimshot-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/snare/oh_snare_rimshot_vl7.flac",
+      "source_sha256": "fffc0d56e3f864825522b0d6d56efb4eda71e1aa2441122f1b5f424423cba642",
+      "licence": "CC0-1.0",
+      "peak": 0.5473120895165525,
+      "rms": 0.033338631195156905
+    },
+    {
+      "output": "samples/040-snare-rimshot-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/snare/oh_snare_rimshot_vl12.flac",
+      "source_sha256": "2a9816bfc172e2cecac56e70710507811657c1d7ec6bb2bea8a913130e832371",
+      "licence": "CC0-1.0",
+      "peak": 0.6443727722199132,
+      "rms": 0.04072863600412518
+    },
+    {
+      "output": "samples/041-floor-tom-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/6-Tom4.wav",
+      "source_sha256": "01ad3bfc5f8f64aded4c16751d25aeebd0d2ff7e947bdd93b977cd721f6f8c26",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6393834341625781,
+      "rms": 0.04210204505346353
+    },
+    {
+      "output": "samples/041-floor-tom-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/8-Tom4.wav",
+      "source_sha256": "93bd0fdd902469c176d00d3a357a89f0d8d3671119e647ee4e4e2e67e919fc21",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6234770133043662,
+      "rms": 0.04291431221004175
+    },
+    {
+      "output": "samples/041-floor-tom-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/13-Tom4.wav",
+      "source_sha256": "ca4c3e2b669a62a446337f4f1ba6c6b9c8acf34cab4c569f4d3bd3985c99d0d0",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6818067281354028,
+      "rms": 0.05336690128533964
+    },
+    {
+      "output": "samples/041-floor-tom-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/14-Tom4.wav",
+      "source_sha256": "d9f7b546fda8e5f4b393a09681d6c4b1c772839aff0f5efd5903bfa5a2af0dfc",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6889717002256684,
+      "rms": 0.05571655974742103
+    },
+    {
+      "output": "samples/041-floor-tom-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/16-Tom4.wav",
+      "source_sha256": "50259385d935fd4bdb9c6448a3060e09c37e42c7f638191fb150b8011525dba6",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6925957698762631,
+      "rms": 0.056941602656642255
+    },
+    {
+      "output": "samples/041-floor-tom-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/17-Tom4.wav",
+      "source_sha256": "be5b51a71b7adbc12bdf71b2abc4e635f79d36ca9c89623a39afda077703096e",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6923949920301673,
+      "rms": 0.05833380311074431
+    },
+    {
+      "output": "samples/042-closed-hat-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatClosed/8-HihatClosed.wav",
+      "source_sha256": "3291a1082e6001d838fd24b89d70091a17294c7c78f397ba93f4b4e171e07a29",
+      "licence": "CC-BY-4.0",
+      "peak": 0.14306496001714838,
+      "rms": 0.011485357597253965
+    },
+    {
+      "output": "samples/042-closed-hat-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatClosed/10-HihatClosed.wav",
+      "source_sha256": "788de1d81af576ebf91c9da7e8a04c6341c33298d0830f4b96f7c68d08742d82",
+      "licence": "CC-BY-4.0",
+      "peak": 0.18175666202465696,
+      "rms": 0.014891461958711796
+    },
+    {
+      "output": "samples/042-closed-hat-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatClosed/18-HihatClosed.wav",
+      "source_sha256": "d47d38cb75001834157371b7c605688ad0c9638d7c33d529287ef6cdd9062a79",
+      "licence": "CC-BY-4.0",
+      "peak": 0.33973632369185625,
+      "rms": 0.03385697914470513
+    },
+    {
+      "output": "samples/042-closed-hat-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatClosed/20-HihatClosed.wav",
+      "source_sha256": "a16069acacdf82699fcaa678ec69cc2ea0e390162957238ba6a9673301bab4c3",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5362841069075083,
+      "rms": 0.051842704426599794
+    },
+    {
+      "output": "samples/042-closed-hat-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatClosed/24-HihatClosed.wav",
+      "source_sha256": "e85c5b3b10d1b6a69458eabbfaf0a04b3b94df1f3c597b82bdc0fcff1c724c13",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5729426852511722,
+      "rms": 0.06651882178083875
+    },
+    {
+      "output": "samples/042-closed-hat-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatClosed/26-HihatClosed.wav",
+      "source_sha256": "f41438b82fc2f0a4704b37398681e5e4f7db6daa083f15bc013adfec2e6fb8ee",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.07509509706372201
+    },
+    {
+      "output": "samples/043-deep-floor-tom-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/6-Tom4.wav",
+      "source_sha256": "01ad3bfc5f8f64aded4c16751d25aeebd0d2ff7e947bdd93b977cd721f6f8c26",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6392596374880959,
+      "rms": 0.04283821113662146
+    },
+    {
+      "output": "samples/043-deep-floor-tom-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/8-Tom4.wav",
+      "source_sha256": "93bd0fdd902469c176d00d3a357a89f0d8d3671119e647ee4e4e2e67e919fc21",
+      "licence": "CC-BY-4.0",
+      "peak": 0.622484679601054,
+      "rms": 0.043678324199339244
+    },
+    {
+      "output": "samples/043-deep-floor-tom-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/13-Tom4.wav",
+      "source_sha256": "ca4c3e2b669a62a446337f4f1ba6c6b9c8acf34cab4c569f4d3bd3985c99d0d0",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6791757466756538,
+      "rms": 0.0542863195968954
+    },
+    {
+      "output": "samples/043-deep-floor-tom-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/14-Tom4.wav",
+      "source_sha256": "d9f7b546fda8e5f4b393a09681d6c4b1c772839aff0f5efd5903bfa5a2af0dfc",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6868214513427706,
+      "rms": 0.05669542601319294
+    },
+    {
+      "output": "samples/043-deep-floor-tom-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/16-Tom4.wav",
+      "source_sha256": "50259385d935fd4bdb9c6448a3060e09c37e42c7f638191fb150b8011525dba6",
+      "licence": "CC-BY-4.0",
+      "peak": 0.690565732112457,
+      "rms": 0.05793176905878739
+    },
+    {
+      "output": "samples/043-deep-floor-tom-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom4/17-Tom4.wav",
+      "source_sha256": "be5b51a71b7adbc12bdf71b2abc4e635f79d36ca9c89623a39afda077703096e",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6905724053382101,
+      "rms": 0.05934766605146441
+    },
+    {
+      "output": "samples/044-pedal-hat-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_pedal_vl1_rr1.flac",
+      "source_sha256": "914fdab7847eacf82f016d48959ddd286c8dff9626ba9a4873a600b3d5d8f6d0",
+      "licence": "CC0-1.0",
+      "peak": 0.18351732937107879,
+      "rms": 0.01254578238661502
+    },
+    {
+      "output": "samples/044-pedal-hat-v001-rr2.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_pedal_vl1_rr2.flac",
+      "source_sha256": "f8f93f771893a14f292d12f7bebbcb421200d6d45e899f286517c9ce0dfc6ad0",
+      "licence": "CC0-1.0",
+      "peak": 0.18827733208299396,
+      "rms": 0.01591625899528399
+    },
+    {
+      "output": "samples/044-pedal-hat-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_pedal_vl2_rr1.flac",
+      "source_sha256": "8e7cf653e07bb6773e835e3fa7502bc199c23ee6e94d44cf3b6fda783ac309b0",
+      "licence": "CC0-1.0",
+      "peak": 0.4798586251465351,
+      "rms": 0.03719560148463787
+    },
+    {
+      "output": "samples/044-pedal-hat-v043-rr2.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_pedal_vl2_rr2.flac",
+      "source_sha256": "78cc168c52d8b81caa447078dd3976476794fbf6b1073b9ab0aacfe0c55299e6",
+      "licence": "CC0-1.0",
+      "peak": 0.5075036300432915,
+      "rms": 0.03169113795525654
+    },
+    {
+      "output": "samples/044-pedal-hat-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_pedal_vl3_rr1.flac",
+      "source_sha256": "5311c752a8852e48a05be2d5841bbccb5dedce5b606f49ad8168cc8c52b22235",
+      "licence": "CC0-1.0",
+      "peak": 0.6074656298884081,
+      "rms": 0.059018096528605984
+    },
+    {
+      "output": "samples/044-pedal-hat-v086-rr2.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_pedal_vl3_rr2.flac",
+      "source_sha256": "ef8cb0f9ff9e9f6368a138c95a2e59a9b85e4a2eae661ae73c9500f61ca6a43b",
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.055454838679389336
+    },
+    {
+      "output": "samples/045-low-tom-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom3/4-Tom3.wav",
+      "source_sha256": "c16c56ab431e41fb832ce36f3599fd635392c843f03842bab1830d909acb7b1c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5585046859322568,
+      "rms": 0.0675319274073771
+    },
+    {
+      "output": "samples/045-low-tom-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom3/5-Tom3.wav",
+      "source_sha256": "19cf72f5038ad8ad691565e7423c0f114ab3c07bb683edaf59b8a071475bb1d1",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6667627379617874,
+      "rms": 0.07253242144690789
+    },
+    {
+      "output": "samples/045-low-tom-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom3/8-Tom3.wav",
+      "source_sha256": "09aa817fdcc441ce2e0ba013027e0e4bb04599caf8b58d1effde6a77a3c0e2d7",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6233157744770618,
+      "rms": 0.07809412062251819
+    },
+    {
+      "output": "samples/045-low-tom-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom3/9-Tom3.wav",
+      "source_sha256": "e9ec6c5dd5901d26cf2d1aaff28b4b6df53344fa6dc71163ab56fac1ef364e59",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6714738652566589,
+      "rms": 0.08091881113718451
+    },
+    {
+      "output": "samples/045-low-tom-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom3/11-Tom3.wav",
+      "source_sha256": "e68978901f3899077339e1ce8c2a6f300928767f64bcbaccdd3c05eab3bfc239",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6869283696856527,
+      "rms": 0.08345269126297916
+    },
+    {
+      "output": "samples/045-low-tom-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom3/12-Tom3.wav",
+      "source_sha256": "15bb060222b2e801567e43b6c01f18ab301ac94e71737b8c4182316d77f9b48e",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6737396896889488,
+      "rms": 0.08409773795931486
+    },
+    {
+      "output": "samples/046-open-hat-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatOpen/8-HihatOpen.wav",
+      "source_sha256": "fd30d99707b9fa9c10ef8f471e030110ec0419d19026c2184a2dc5b36e68d3a7",
+      "licence": "CC-BY-4.0",
+      "peak": 0.2908782005902336,
+      "rms": 0.0216205905780652
+    },
+    {
+      "output": "samples/046-open-hat-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatOpen/10-HihatOpen.wav",
+      "source_sha256": "71566c7e97bdb635399fb2109fe08cab59c278eb030126bb56313c0eee026adc",
+      "licence": "CC-BY-4.0",
+      "peak": 0.4345490486892374,
+      "rms": 0.03758283928074453
+    },
+    {
+      "output": "samples/046-open-hat-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatOpen/18-HihatOpen.wav",
+      "source_sha256": "69a61205ff12dfbd0634dcda00e40bfccff3243ced65e5c6e75fbf146cdc457d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5595679989615949,
+      "rms": 0.050473296063724
+    },
+    {
+      "output": "samples/046-open-hat-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatOpen/20-HihatOpen.wav",
+      "source_sha256": "04ec60af62f55d20175f16e54666ee9823af702bb3f79a3b8ee8b8a55698c3b4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5847867462661681,
+      "rms": 0.05091771913292134
+    },
+    {
+      "output": "samples/046-open-hat-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatOpen/24-HihatOpen.wav",
+      "source_sha256": "57d9a260dabb2fb505a09b383387fc001a1d3761749fa1c1794a64710144967f",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.059750809405156986
+    },
+    {
+      "output": "samples/046-open-hat-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/HihatOpen/26-HihatOpen.wav",
+      "source_sha256": "a261348b12cc00ace55db296bff3c64c0947c91c387f3a84d77f16c0d9545ed0",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6001621403173633,
+      "rms": 0.05827136416998504
+    },
+    {
+      "output": "samples/047-mid-tom-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom2/3-Tom2.wav",
+      "source_sha256": "bb8cc431c898e08e1bcd0fc054181a68e161cc52b080f771179dcb19a2cffef6",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5121229258603494,
+      "rms": 0.06645365695490688
+    },
+    {
+      "output": "samples/047-mid-tom-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom2/4-Tom2.wav",
+      "source_sha256": "c62a3b7393abedf4a101e76406c70b800ba371729eec1eceb1d78ab68bfbd99e",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5001831505330098,
+      "rms": 0.06690903703037929
+    },
+    {
+      "output": "samples/047-mid-tom-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom2/7-Tom2.wav",
+      "source_sha256": "58624102ee9275555d553ba38e07f3a646aa84f0811eb9acb36314855beabf65",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6581923827141886,
+      "rms": 0.07536249959264005
+    },
+    {
+      "output": "samples/047-mid-tom-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom2/8-Tom2.wav",
+      "source_sha256": "ca46398fea8d83a22242d1eac4c0675545b7b30ff622425ed8b122dd52b80ed4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6802310672030631,
+      "rms": 0.0773099848854166
+    },
+    {
+      "output": "samples/047-mid-tom-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom2/9-Tom2.wav",
+      "source_sha256": "8e681ba7da6c0314cc43f2dcded81631435918db85ed8eb9595d4e8001bf5dfe",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6859161838657806,
+      "rms": 0.07736818713100513
+    },
+    {
+      "output": "samples/047-mid-tom-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom2/10-Tom2.wav",
+      "source_sha256": "e105df79292565a9590abb6de43a568914b1c246ffcee23d18ba854cc7778c1f",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6881039054732031,
+      "rms": 0.08037863386578735
+    },
+    {
+      "output": "samples/048-high-tom-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/3-Tom1.wav",
+      "source_sha256": "a6aa76306fd9a07e78602a52650de0633910ee7ee9899abd482ddbc887803709",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6293360348673617,
+      "rms": 0.06605722909910845
+    },
+    {
+      "output": "samples/048-high-tom-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/4-Tom1.wav",
+      "source_sha256": "709f93872e7a3b7c58e8ba52189285b1c7d1e7a27fc98c8b5df2d99b09ae92fb",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6274838243000439,
+      "rms": 0.06618371137009586
+    },
+    {
+      "output": "samples/048-high-tom-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/6-Tom1.wav",
+      "source_sha256": "7623e78bda2fb25abe7736bf01230244d32fb038603299a947c17fee34a95b19",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6545313160198291,
+      "rms": 0.07205118466098481
+    },
+    {
+      "output": "samples/048-high-tom-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/7-Tom1.wav",
+      "source_sha256": "d8511d00c1faa3123f515f7d68a458337880b68ea5fc2eb22c645e216e12797c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6669408183242032,
+      "rms": 0.07331616231529345
+    },
+    {
+      "output": "samples/048-high-tom-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/8-Tom1.wav",
+      "source_sha256": "442366967e5736397c1d572c64603a424eb3af9a25c5707bc1472bd68943aec8",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6780970122338166,
+      "rms": 0.0762312231146619
+    },
+    {
+      "output": "samples/048-high-tom-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/9-Tom1.wav",
+      "source_sha256": "fd52ad32730bfd07f7eeffe994a7abf150176bdf3be36ab7bd10f22d8fedb34d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6906664262293086,
+      "rms": 0.07654411202077108
+    },
+    {
+      "output": "samples/049-crash-left-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashL/3-CrashL.wav",
+      "source_sha256": "c7f3f26a4e2e7dd7739cbc28e190a9ae1c9d177370b6ba6719feb78bdcb5d04f",
+      "licence": "CC-BY-4.0",
+      "peak": 0.15322542502964487,
+      "rms": 0.00982627564452033
+    },
+    {
+      "output": "samples/049-crash-left-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashL/4-CrashL.wav",
+      "source_sha256": "de14606d85dfa3a7c614ec779506d4bac0fc26782f398b1e054a74f1811e9c96",
+      "licence": "CC-BY-4.0",
+      "peak": 0.2462497795654662,
+      "rms": 0.01243545458150697
+    },
+    {
+      "output": "samples/049-crash-left-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashL/5-CrashL.wav",
+      "source_sha256": "4fa6e580bd343bc851d69c2c9529f90da411f251c1c1168cf1a61bc40f48d62d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.3219477136271543,
+      "rms": 0.016661458777097
+    },
+    {
+      "output": "samples/049-crash-left-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashL/6-CrashL.wav",
+      "source_sha256": "06682346cb1f41eadae729f02a34b6664bf623ab830bdbd31f54418367720f66",
+      "licence": "CC-BY-4.0",
+      "peak": 0.4665574201810357,
+      "rms": 0.021773037471763214
+    },
+    {
+      "output": "samples/049-crash-left-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashL/7-CrashL.wav",
+      "source_sha256": "8830d841cbddc4ca27d9423ac4019ad4aae10dacbf578b95b9ca7721e1ccb7dc",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5659125664446087,
+      "rms": 0.02724293487619792
+    },
+    {
+      "output": "samples/049-crash-left-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashL/8-CrashL.wav",
+      "source_sha256": "fa94d72fec19b9469e847db01b0f2f21dbdeb7a3b586337f9ea1c79bc20cf5a6",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03211915010051064
+    },
+    {
+      "output": "samples/050-high-tom-tight-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/3-Tom1.wav",
+      "source_sha256": "a6aa76306fd9a07e78602a52650de0633910ee7ee9899abd482ddbc887803709",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6194389460075816,
+      "rms": 0.06835836521963264
+    },
+    {
+      "output": "samples/050-high-tom-tight-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/4-Tom1.wav",
+      "source_sha256": "709f93872e7a3b7c58e8ba52189285b1c7d1e7a27fc98c8b5df2d99b09ae92fb",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6169098135841274,
+      "rms": 0.06848773859968496
+    },
+    {
+      "output": "samples/050-high-tom-tight-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/6-Tom1.wav",
+      "source_sha256": "7623e78bda2fb25abe7736bf01230244d32fb038603299a947c17fee34a95b19",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6497910113541918,
+      "rms": 0.07462397600975844
+    },
+    {
+      "output": "samples/050-high-tom-tight-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/7-Tom1.wav",
+      "source_sha256": "d8511d00c1faa3123f515f7d68a458337880b68ea5fc2eb22c645e216e12797c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6610808427327202,
+      "rms": 0.07594634236673588
+    },
+    {
+      "output": "samples/050-high-tom-tight-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/8-Tom1.wav",
+      "source_sha256": "442366967e5736397c1d572c64603a424eb3af9a25c5707bc1472bd68943aec8",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6762491074197625,
+      "rms": 0.07895917412828553
+    },
+    {
+      "output": "samples/050-high-tom-tight-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/Tom1/9-Tom1.wav",
+      "source_sha256": "fd52ad32730bfd07f7eeffe994a7abf150176bdf3be36ab7bd10f22d8fedb34d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6901401796138323,
+      "rms": 0.07930037612271473
+    },
+    {
+      "output": "samples/051-ride-left-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideL/3-RideL.wav",
+      "source_sha256": "26a0bbbbdb2af5bae26e5875b55a2f2fe391888d379f2e010d84ca59277c9066",
+      "licence": "CC-BY-4.0",
+      "peak": 0.44196702001253924,
+      "rms": 0.027127866361120755
+    },
+    {
+      "output": "samples/051-ride-left-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideL/4-RideL.wav",
+      "source_sha256": "ef8835c59ac77301678a8fc65635f81b424b63876800ac5aec234f312186239f",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5108339314170847,
+      "rms": 0.03252527353345976
+    },
+    {
+      "output": "samples/051-ride-left-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideL/6-RideL.wav",
+      "source_sha256": "af1e27407c3082d257f1f799f7f966b5a14d5f6921b03751028f99f7d6ab67c2",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5654086714663356,
+      "rms": 0.03933102011517986
+    },
+    {
+      "output": "samples/051-ride-left-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideL/7-RideL.wav",
+      "source_sha256": "9cb90a7c631acf5b6f5c875492ce0cf6fe4f57e0c3318802030c7b71ad4c1ac4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03670244399879841
+    },
+    {
+      "output": "samples/051-ride-left-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideL/7-RideL.wav",
+      "source_sha256": "9cb90a7c631acf5b6f5c875492ce0cf6fe4f57e0c3318802030c7b71ad4c1ac4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03670244399879841
+    },
+    {
+      "output": "samples/051-ride-left-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideL/8-RideL.wav",
+      "source_sha256": "a80d1a31d65a93bce311b18b322f73732628e9f56a0bf6d4458039738a058260",
+      "licence": "CC-BY-4.0",
+      "peak": 0.570434348082125,
+      "rms": 0.04359475046986299
+    },
+    {
+      "output": "samples/052-china-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/China/3-China.wav",
+      "source_sha256": "9da528085b1b396ed31ba157881423b7b76d20fdb5ce8f3810d5529b2fb677d4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.2670919347088712,
+      "rms": 0.013066069571633858
+    },
+    {
+      "output": "samples/052-china-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/China/4-China.wav",
+      "source_sha256": "106cf6175217859d8282d1612d183f7eb9d16d8d32db3119d392d15fde287bf9",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5206091268460113,
+      "rms": 0.01782677783159087
+    },
+    {
+      "output": "samples/052-china-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/China/7-China.wav",
+      "source_sha256": "a96daca3177c085e5841bef38d37ffac6346fc7fdaacbca40172bd3fc0020f31",
+      "licence": "CC-BY-4.0",
+      "peak": 0.49342025230949166,
+      "rms": 0.024332309674722278
+    },
+    {
+      "output": "samples/052-china-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/China/8-China.wav",
+      "source_sha256": "2e16915d8d462df1bc7edaf55f9c6957de9ff6c53b1752944c11705fbd4eddcd",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5541863552067747,
+      "rms": 0.02778878154329626
+    },
+    {
+      "output": "samples/052-china-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/China/9-China.wav",
+      "source_sha256": "654a9eda5932e6f7383a63771852703725c13d89e26b0811f6c76792f1ad6cc6",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.030008779486144613
+    },
+    {
+      "output": "samples/052-china-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/China/10-China.wav",
+      "source_sha256": "2bd7946fa5f674793a0565de7dc649366ea140ff1c6194a202094fd197297358",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6221009343547589,
+      "rms": 0.029378724058735803
+    },
+    {
+      "output": "samples/053-ride-bell-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideLBell/1-RideLBell.wav",
+      "source_sha256": "d02e8d6e264fb57e6293b3e1325c11bb2564819f61fc3e8e0755b726ce2c35b3",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03422857600495102
+    },
+    {
+      "output": "samples/053-ride-bell-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideLBell/2-RideLBell.wav",
+      "source_sha256": "d1a507b52eafb9b1580131b96b0e9568ecd44bd6e8eed2258b8940e65e77b7b8",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5966256979325805,
+      "rms": 0.035773987392017065
+    },
+    {
+      "output": "samples/053-ride-bell-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideLBell/1-RideLBell.wav",
+      "source_sha256": "d02e8d6e264fb57e6293b3e1325c11bb2564819f61fc3e8e0755b726ce2c35b3",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03422857600495102
+    },
+    {
+      "output": "samples/053-ride-bell-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideLBell/2-RideLBell.wav",
+      "source_sha256": "d1a507b52eafb9b1580131b96b0e9568ecd44bd6e8eed2258b8940e65e77b7b8",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5966256979325805,
+      "rms": 0.035773987392017065
+    },
+    {
+      "output": "samples/053-ride-bell-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideLBell/1-RideLBell.wav",
+      "source_sha256": "d02e8d6e264fb57e6293b3e1325c11bb2564819f61fc3e8e0755b726ce2c35b3",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03422857600495102
+    },
+    {
+      "output": "samples/053-ride-bell-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideLBell/2-RideLBell.wav",
+      "source_sha256": "d1a507b52eafb9b1580131b96b0e9568ecd44bd6e8eed2258b8940e65e77b7b8",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5966256979325805,
+      "rms": 0.035773987392017065
+    },
+    {
+      "output": "samples/054-tambourine-v001-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.3725260830179274,
+      "rms": 0.03626883471270181
+    },
+    {
+      "output": "samples/054-tambourine-v001-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.35051183760201476,
+      "rms": 0.03634263737021781
+    },
+    {
+      "output": "samples/054-tambourine-v043-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5542534341289043,
+      "rms": 0.05521974135336407
+    },
+    {
+      "output": "samples/054-tambourine-v043-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5000327246394749,
+      "rms": 0.05491868900134561
+    },
+    {
+      "output": "samples/054-tambourine-v086-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6324311984230199,
+      "rms": 0.07350258276865165
+    },
+    {
+      "output": "samples/054-tambourine-v086-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.07383832181932375
+    },
+    {
+      "output": "samples/055-splash-v001-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.36635714696909416,
+      "rms": 0.033798867837597085
+    },
+    {
+      "output": "samples/055-splash-v001-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.34423072715715264,
+      "rms": 0.033581310990100595
+    },
+    {
+      "output": "samples/055-splash-v043-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5174640926508323,
+      "rms": 0.051659756050680725
+    },
+    {
+      "output": "samples/055-splash-v043-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5267050888615593,
+      "rms": 0.05146933051056442
+    },
+    {
+      "output": "samples/055-splash-v086-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6199957806936981,
+      "rms": 0.06893874523001566
+    },
+    {
+      "output": "samples/055-splash-v086-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.06894657412507835
+    },
+    {
+      "output": "samples/056-cowbell-v001-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.36340094027800823,
+      "rms": 0.05098158013960603
+    },
+    {
+      "output": "samples/056-cowbell-v001-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.3633896353039056,
+      "rms": 0.050982053717982305
+    },
+    {
+      "output": "samples/056-cowbell-v043-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5226515061721598,
+      "rms": 0.07719572957061946
+    },
+    {
+      "output": "samples/056-cowbell-v043-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.5226374683224377,
+      "rms": 0.07719641010966123
+    },
+    {
+      "output": "samples/056-cowbell-v086-rr1.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.10188003625271733
+    },
+    {
+      "output": "samples/056-cowbell-v086-rr2.wav",
+      "source": "original-synthesis",
+      "source_sha256": null,
+      "licence": "CC0-1.0",
+      "peak": 0.6465716975519032,
+      "rms": 0.1018808546362093
+    },
+    {
+      "output": "samples/057-crash-right-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashR/3-CrashR.wav",
+      "source_sha256": "234e2fc797234c90180ee7f90c95fc66bc56ac6188b6b4f394d41ecdf7308b1b",
+      "licence": "CC-BY-4.0",
+      "peak": 0.20565465508306244,
+      "rms": 0.014682405727093098
+    },
+    {
+      "output": "samples/057-crash-right-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashR/4-CrashR.wav",
+      "source_sha256": "6b7018270e4dbdfab457b09a38ccb8660bb6ccfe742e6b3f43956f6c7b7ca3e4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.414046157641397,
+      "rms": 0.020945229599294568
+    },
+    {
+      "output": "samples/057-crash-right-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashR/7-CrashR.wav",
+      "source_sha256": "97d6617f9407be5f6f7f113fb3828016753830535d4fd1917c00728c116fa33e",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6199182641017054,
+      "rms": 0.031187500637448212
+    },
+    {
+      "output": "samples/057-crash-right-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashR/8-CrashR.wav",
+      "source_sha256": "6ad1afb81381a3de01084d90384e2372696e28872d4c06877737b11eb7896989",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5865431545716675,
+      "rms": 0.03231659543178887
+    },
+    {
+      "output": "samples/057-crash-right-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashR/9-CrashR.wav",
+      "source_sha256": "88987cc312da54d2d917303065dd25e2b205c49b52cd21a9142519e7c63145a9",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6461659507290591,
+      "rms": 0.034399261667534105
+    },
+    {
+      "output": "samples/057-crash-right-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/CrashR/10-CrashR.wav",
+      "source_sha256": "f05945bdb3ec00f2d1f4a58fe40401636f788b6a1714c5b98e4b701ce5748c58",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03447362696229625
+    },
+    {
+      "output": "samples/059-ride-right-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideR/3-RideR.wav",
+      "source_sha256": "1806df4e914b6314cf251b65dcf0abc42fad8ecc8c493125c6368d3f0a8a743b",
+      "licence": "CC-BY-4.0",
+      "peak": 0.2649189246157834,
+      "rms": 0.014064535615570382
+    },
+    {
+      "output": "samples/059-ride-right-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideR/4-RideR.wav",
+      "source_sha256": "d55291f8e7bf7e0d6746708802ce92c601253d45ea6c1f79f59a744a8eff6932",
+      "licence": "CC-BY-4.0",
+      "peak": 0.4039694002019471,
+      "rms": 0.018944974914944897
+    },
+    {
+      "output": "samples/059-ride-right-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideR/6-RideR.wav",
+      "source_sha256": "0ca241c381df745a65273adadaeed8cfd0da3dc2047d5686090e833af2c5b6f4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5127406000581938,
+      "rms": 0.02681555411142136
+    },
+    {
+      "output": "samples/059-ride-right-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideR/7-RideR.wav",
+      "source_sha256": "95138fe1acc5ace90a5808b36a36ef6550bdf38c1af88f2f98188199b8cd8f7c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5454226847752409,
+      "rms": 0.03315062108922043
+    },
+    {
+      "output": "samples/059-ride-right-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideR/7-RideR.wav",
+      "source_sha256": "95138fe1acc5ace90a5808b36a36ef6550bdf38c1af88f2f98188199b8cd8f7c",
+      "licence": "CC-BY-4.0",
+      "peak": 0.5454226847752409,
+      "rms": 0.03315062108922043
+    },
+    {
+      "output": "samples/059-ride-right-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideR/8-RideR.wav",
+      "source_sha256": "e3fc1e42729e97de70d366511a9f2a7329d80c792e4cf2b9dd2a0c5306f3ede4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.03433433435017694
+    },
+    {
+      "output": "samples/060-crash-studio-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl1_rr1.flac",
+      "source_sha256": "3307ad060004db51990b81b80badc0d26c90dae87e7b0f9b9ebcf099224fd823",
+      "licence": "CC0-1.0",
+      "peak": 0.17337540851358016,
+      "rms": 0.011563692739863976
+    },
+    {
+      "output": "samples/060-crash-studio-v001-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl1_rr2.flac",
+      "source_sha256": "5867af63074b0f80318e3c26f0164a13bdc59d56fcc2e6c799bbd5b8a8a36557",
+      "licence": "CC0-1.0",
+      "peak": 0.16342755317564076,
+      "rms": 0.011088822253817104
+    },
+    {
+      "output": "samples/060-crash-studio-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl2_rr1.flac",
+      "source_sha256": "2eb8c5bddc510bb56a48f325d9cdcc54ea52d926645df9180b206a820638fce1",
+      "licence": "CC0-1.0",
+      "peak": 0.28925904698937654,
+      "rms": 0.024176460451454544
+    },
+    {
+      "output": "samples/060-crash-studio-v043-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl2_rr2.flac",
+      "source_sha256": "501b67c566727274f6a9567816dbe94dd66624ee924e82c5fc84df2aa5743980",
+      "licence": "CC0-1.0",
+      "peak": 0.2668125557035656,
+      "rms": 0.020361370726401696
+    },
+    {
+      "output": "samples/060-crash-studio-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl3_rr1.flac",
+      "source_sha256": "28ac4dc5c130175555ef54009f9186e418a664c544c1f996058b5acd3b85ccb9",
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716151,
+      "rms": 0.04983087426963594
+    },
+    {
+      "output": "samples/060-crash-studio-v086-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl3_rr2.flac",
+      "source_sha256": "a9a13b01c169505ade812614fbd5b929006884ac2fa9fc13be2c72028ba1779f",
+      "licence": "CC0-1.0",
+      "peak": 0.531655142372632,
+      "rms": 0.04507005850683773
+    },
+    {
+      "output": "samples/061-crash-choked-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl1_rr1.flac",
+      "source_sha256": "3307ad060004db51990b81b80badc0d26c90dae87e7b0f9b9ebcf099224fd823",
+      "licence": "CC0-1.0",
+      "peak": 0.17337540851358016,
+      "rms": 0.037411244708809674
+    },
+    {
+      "output": "samples/061-crash-choked-v001-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl1_rr2.flac",
+      "source_sha256": "5867af63074b0f80318e3c26f0164a13bdc59d56fcc2e6c799bbd5b8a8a36557",
+      "licence": "CC0-1.0",
+      "peak": 0.16342755317564076,
+      "rms": 0.03518881026574713
+    },
+    {
+      "output": "samples/061-crash-choked-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl2_rr1.flac",
+      "source_sha256": "2eb8c5bddc510bb56a48f325d9cdcc54ea52d926645df9180b206a820638fce1",
+      "licence": "CC0-1.0",
+      "peak": 0.28925904698937654,
+      "rms": 0.06853530601812513
+    },
+    {
+      "output": "samples/061-crash-choked-v043-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl2_rr2.flac",
+      "source_sha256": "501b67c566727274f6a9567816dbe94dd66624ee924e82c5fc84df2aa5743980",
+      "licence": "CC0-1.0",
+      "peak": 0.2668125557035656,
+      "rms": 0.05829441052276871
+    },
+    {
+      "output": "samples/061-crash-choked-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl3_rr1.flac",
+      "source_sha256": "28ac4dc5c130175555ef54009f9186e418a664c544c1f996058b5acd3b85ccb9",
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716151,
+      "rms": 0.1565418873709936
+    },
+    {
+      "output": "samples/061-crash-choked-v086-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_crash_vl3_rr2.flac",
+      "source_sha256": "a9a13b01c169505ade812614fbd5b929006884ac2fa9fc13be2c72028ba1779f",
+      "licence": "CC0-1.0",
+      "peak": 0.531655142372632,
+      "rms": 0.1338377694892539
+    },
+    {
+      "output": "samples/062-crash-sizzle-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_sizzle_vl1_rr1.flac",
+      "source_sha256": "10094bc2b8637cfc2af60b8422eb7f1dee38836a8290baf3283eae9e85b5490b",
+      "licence": "CC0-1.0",
+      "peak": 0.15086613546852232,
+      "rms": 0.008846292604270754
+    },
+    {
+      "output": "samples/062-crash-sizzle-v001-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_sizzle_vl1_rr2.flac",
+      "source_sha256": "ab5cde8ddb4c1316999d0a313368103ac330995cfdfc40e7f8d76323ac242a0b",
+      "licence": "CC0-1.0",
+      "peak": 0.11950883052362532,
+      "rms": 0.007972145116079181
+    },
+    {
+      "output": "samples/062-crash-sizzle-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_sizzle_vl2_rr1.flac",
+      "source_sha256": "839e9e359b3a14b9d90b95cac5fb370a1b0db82685fda9c69de3df8f7ab21500",
+      "licence": "CC0-1.0",
+      "peak": 0.19984258063599777,
+      "rms": 0.013310782434837454
+    },
+    {
+      "output": "samples/062-crash-sizzle-v043-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_sizzle_vl2_rr2.flac",
+      "source_sha256": "9035b5f388b5b8369c0de7338e096351311c0a48aef7e16c36f06f446dd9a8af",
+      "licence": "CC0-1.0",
+      "peak": 0.2145479284864596,
+      "rms": 0.01481010872841602
+    },
+    {
+      "output": "samples/062-crash-sizzle-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_sizzle_vl3_rr1.flac",
+      "source_sha256": "d49368ec3eae95879274f9dac6a1e93f64279f3bcc1c26deb04b3d0bb682bdf1",
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.04207311317688174
+    },
+    {
+      "output": "samples/062-crash-sizzle-v086-rr2.wav",
+      "source": "virtuosity/Samples/oh/crash/oh_crash_sizzle_vl3_rr2.flac",
+      "source_sha256": "24f23ae8fc0920046135297c73754e3a722dc0b4b90ac28543fce9bb8a0df2c7",
+      "licence": "CC0-1.0",
+      "peak": 0.44216402912913605,
+      "rms": 0.033504399314822325
+    },
+    {
+      "output": "samples/063-half-open-hat-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_half_vl1_rr1.flac",
+      "source_sha256": "1cd96c1d9f3702d19cb546a5f1fe59640ceb8c147f9665227040e10184b228ee",
+      "licence": "CC0-1.0",
+      "peak": 0.09871579018364675,
+      "rms": 0.008857020092103273
+    },
+    {
+      "output": "samples/063-half-open-hat-v001-rr2.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_half_vl1_rr2.flac",
+      "source_sha256": "2cbdf785a991047b01ac8bc65ce646697beb6c06483c81a0d20a81b2fde093be",
+      "licence": "CC0-1.0",
+      "peak": 0.10572425193239533,
+      "rms": 0.009970390307643604
+    },
+    {
+      "output": "samples/063-half-open-hat-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_half_vl2_rr1.flac",
+      "source_sha256": "b2d0d4a0a270fe2c94ad56d776e464982b16c1564fc14b3abb750dd03616d833",
+      "licence": "CC0-1.0",
+      "peak": 0.27213238941399354,
+      "rms": 0.020274809351792388
+    },
+    {
+      "output": "samples/063-half-open-hat-v043-rr2.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_half_vl2_rr2.flac",
+      "source_sha256": "cca64d3c3afc0e0d75d47d0dbedec3560f9dc9f5eb40f8124cb9e6c3f91a7d15",
+      "licence": "CC0-1.0",
+      "peak": 0.25566229354188613,
+      "rms": 0.02186854450005014
+    },
+    {
+      "output": "samples/063-half-open-hat-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_half_vl4_rr1.flac",
+      "source_sha256": "8fcf0a7e727f374bb838a7490e18fa45eb7549eba526a3cc7911f11b4376a45d",
+      "licence": "CC0-1.0",
+      "peak": 0.585547516946062,
+      "rms": 0.0729435917410404
+    },
+    {
+      "output": "samples/063-half-open-hat-v086-rr2.wav",
+      "source": "virtuosity/Samples/oh/hh/oh_hh_half_vl4_rr2.flac",
+      "source_sha256": "422d68769631c44241069569da946d7818c5366374ab4578de3829300298d32d",
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.08325789059184888
+    },
+    {
+      "output": "samples/064-ride-bell-right-v001-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideRBell/2-RideRBell.wav",
+      "source_sha256": "acbee8e68184383edd0f78e84bd6acf1aa8e68cf600a5b5bc88b46e026c02571",
+      "licence": "CC-BY-4.0",
+      "peak": 0.1519145523668734,
+      "rms": 0.004269588779333598
+    },
+    {
+      "output": "samples/064-ride-bell-right-v001-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideRBell/3-RideRBell.wav",
+      "source_sha256": "d5ce78180490f707f66dbe18f4a4120279f2b22f1bdd13db4165270cc78febff",
+      "licence": "CC-BY-4.0",
+      "peak": 0.23785448145686217,
+      "rms": 0.00659738474311665
+    },
+    {
+      "output": "samples/064-ride-bell-right-v043-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideRBell/4-RideRBell.wav",
+      "source_sha256": "20f5f6bc87cd55583c14a90268f99e4a2e36421cb2dc50dd8413f76bb91efc0d",
+      "licence": "CC-BY-4.0",
+      "peak": 0.28096293171152875,
+      "rms": 0.009414355012988358
+    },
+    {
+      "output": "samples/064-ride-bell-right-v043-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideRBell/5-RideRBell.wav",
+      "source_sha256": "554079cb8a762532043ec197da61fb7d7c0c68df77294901f2f73552613407a5",
+      "licence": "CC-BY-4.0",
+      "peak": 0.4343552823199501,
+      "rms": 0.010844090238909282
+    },
+    {
+      "output": "samples/064-ride-bell-right-v086-rr1.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideRBell/6-RideRBell.wav",
+      "source_sha256": "645e1cf1f489f50ce59d06122eceb71f027fbf9938b0e8a6c460c4c6f90110f4",
+      "licence": "CC-BY-4.0",
+      "peak": 0.4294220296838276,
+      "rms": 0.014219465002576866
+    },
+    {
+      "output": "samples/064-ride-bell-right-v086-rr2.wav",
+      "source": "muldjord/MuldjordKit SFZ+WAV-20201018/samples/RideRBell/7-RideRBell.wav",
+      "source_sha256": "553a1726fc19dbde53ad6e2336523a50cad67f8c8c02c01012ac40a7348aa7ba",
+      "licence": "CC-BY-4.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.022136467045433286
+    },
+    {
+      "output": "samples/065-flat-ride-crash-v001-rr1.wav",
+      "source": "virtuosity/Samples/oh/flatride/oh_flatride_crash_vl1.flac",
+      "source_sha256": "7db68a06cb836ac6843e6f2d8f062db20fdbc3e3690dcbd338fba3f4766518f9",
+      "licence": "CC0-1.0",
+      "peak": 0.4711093874791886,
+      "rms": 0.017917353605466084
+    },
+    {
+      "output": "samples/065-flat-ride-crash-v043-rr1.wav",
+      "source": "virtuosity/Samples/oh/flatride/oh_flatride_crash_vl2.flac",
+      "source_sha256": "7d7051561d5ff2af38d7d7647b78fc5205aa161cc00a4e9554b2af2e04235023",
+      "licence": "CC0-1.0",
+      "peak": 0.39499497602013645,
+      "rms": 0.015580356598566424
+    },
+    {
+      "output": "samples/065-flat-ride-crash-v086-rr1.wav",
+      "source": "virtuosity/Samples/oh/flatride/oh_flatride_crash_vl4.flac",
+      "source_sha256": "c9f473f98ef163a0c25a412438479ccb69e0dce2a13694979eff90c7672fdc3c",
+      "licence": "CC0-1.0",
+      "peak": 0.6465859620716152,
+      "rms": 0.018394274116449897
+    }
+  ]
+}

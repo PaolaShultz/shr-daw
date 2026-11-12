@@ -13790,7 +13790,7 @@ impl App {
             self.status = "no drum pattern selected".into();
             return;
         };
-        let pattern = match drum_pattern::load(&entry).and_then(|pattern| {
+        let mut pattern = match drum_pattern::load(&entry).and_then(|pattern| {
             drum_pattern::arrange(&pattern, self.drum_target_rows, self.drum_fill_rows)
         }) {
             Ok(pattern) => pattern,
@@ -13803,6 +13803,33 @@ impl App {
             self.status = "NO DRUM PAGE · add percussion page".into();
             return;
         };
+        let mut classes = std::collections::BTreeMap::new();
+        let mut adapted = 0;
+        if let PageTarget::InternalDrums(kit) = &self.current_pages()[page].target {
+            if let Some(kit) = self.drum_kits.iter().find(|entry| &entry.id == kit) {
+                classes = match crate::drums_host::pattern_note_classes(&kit.path) {
+                    Ok(classes) => classes,
+                    Err(_) => {
+                        self.status = "DRUM KIT UNREADABLE · notes kept".into();
+                        return;
+                    }
+                };
+                // Saved musician patterns keep their exact notes. Only factory
+                // material follows the documented compatibility mapping.
+                if !entry.user {
+                    adapted = match drum_pattern::adapt_to_notes(
+                        &mut pattern,
+                        &classes.keys().copied().collect(),
+                    ) {
+                        Ok(count) => count,
+                        Err(_) => {
+                            self.status = "DRUM NOTES UNSUPPORTED · notes kept".into();
+                            return;
+                        }
+                    };
+                }
+            }
+        }
         let number = self.tracker_pattern_number();
         let target_rows = self.drum_target_rows;
         let shape_changes =
@@ -13825,6 +13852,14 @@ impl App {
                 cells[start..start + LANES_PER_PAGE].copy_from_slice(&pattern.rows[row]);
             }
             if let Some(target_page) = target.pages.get_mut(page) {
+                for (note, class) in classes {
+                    if note >= 60 {
+                        target_page
+                            .drum_class_overrides
+                            .entry(note)
+                            .or_insert(class);
+                    }
+                }
                 for (lane, playback) in target_page.lanes.iter_mut().zip(pattern.lanes) {
                     lane.playback = playback;
                 }
@@ -13833,7 +13868,11 @@ impl App {
         self.tracker_page = page;
         self.tracker_row = 0;
         self.tracker_track = 0;
-        self.status = "DRUM LOADED · routing unchanged".into();
+        self.status = if adapted == 0 {
+            "DRUM LOADED · routing unchanged".into()
+        } else {
+            format!("DRUM LOADED · {adapted} hits adapted")
+        };
     }
     fn current_pattern_has_other_page_data(&self, drum_page: usize) -> bool {
         let Some(pattern) = self.current_pattern() else {
@@ -41845,6 +41884,49 @@ release = 0.4
         assert_eq!(pattern.pages[percussion].lanes[0].playback, drum.lanes[0]);
         assert!(a.status.contains("routing unchanged"));
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn expanded_drum_load_keeps_melody_route_and_user_classes_and_undoes() {
+        let p = presets();
+        let mut a = app(&p);
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("kits/power-studio.shrkit");
+        a.drum_kits = vec![crate::drums_host::KitEntry {
+            id: "power-studio".into(),
+            name: "Power Studio".into(),
+            path,
+        }];
+        let page = a.percussion_page_index().unwrap();
+        a.song.patterns.get_mut(&0).unwrap().pages[page].target =
+            PageTarget::InternalDrums("power-studio".into());
+        a.song.patterns.get_mut(&0).unwrap().pages[page]
+            .drum_class_overrides
+            .insert(
+                60,
+                sequencer::DrumNoteClass::new(sequencer::DrumRole::Other, Some(7)),
+            );
+        a.song.patterns.get_mut(&0).unwrap().rows[0][0].note = Note::On(64);
+        a.screen = Screen::TrackerFiles;
+        a.open_drum_patterns();
+        let before = a.song.clone();
+        perform(Action::LoadDrumPattern, &mut a, Path::new("/none"), None);
+        assert_eq!(a.status, "DRUM LOADED · routing unchanged");
+        let after = &a.song.patterns[&0];
+        assert_eq!(after.rows[0][0], before.patterns[&0].rows[0][0]);
+        assert_eq!(
+            after.pages[page].target,
+            before.patterns[&0].pages[page].target
+        );
+        assert_eq!(
+            after.pages[page].drum_class_overrides[&60],
+            before.patterns[&0].pages[page].drum_class_overrides[&60]
+        );
+        assert_eq!(
+            after.pages[page].drum_class_overrides[&63].choke_group,
+            Some(1)
+        );
+        a.pattern_undo();
+        assert_eq!(a.song.patterns, before.patterns);
     }
 
     #[test]

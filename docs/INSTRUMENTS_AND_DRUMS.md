@@ -210,13 +210,17 @@ A new Project's four-lane **Drums** page uses the installed Big Rock kit when
 available; an explicit external or FluidSynth General MIDI drum route remains
 possible.
 
-The public installation contains four cleared kits:
+The public installation contains five cleared kits:
 
 - Acid, an original fully modelled CC0 kit;
 - Electronic House, original modelled voices plus two deterministic CC0 SHR
   Synth one-shot exports;
 - Big Rock, a curated CC BY 4.0 acoustic kit; and
-- Experimental Noise, a curated CC BY 4.0 experimental kit.
+- Experimental Noise, a curated CC BY 4.0 experimental kit; and
+- Power Studio, 30 voices and 171 processed samples under mixed CC BY 4.0/CC0,
+  with three distinct crashes, two rides, both ride bells and extra articulations.
+  Its [note map and credits](../kits/power-studio.shrkit/README.md) travel with
+  the [standalone SHR Drums pack](https://github.com/PaolaShultz/shr-drums/releases/tag/power-studio-v1.0.0).
 
 Open FT2 **ROUTE** on a Drums page and choose `TARGET → SHR Drums → KIT`.
 Kit changes are live-auditioned inside the same Apply/Cancel transaction as

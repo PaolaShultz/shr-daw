@@ -642,6 +642,18 @@ fills are ordinary editable notes and play every time; this is separate from
 the live FILL latch for conditional cells. **LOAD** remains one undoable Pattern
 edit. To preserve a saved groove exactly at its original length, choose OFF.
 
+All 120 factory grooves use the expanded Power Studio palette, with genre-specific
+rides, bells, crashes, toms, hat articulations and percussion. Select Power Studio
+in the Drums page's **ROUTE → TARGET → SHR Drums → KIT** for the complete sound.
+Loading a factory groove into an older internal kit maps unavailable voices to
+supported alternatives and reports the number of adapted hits. If no supported
+alternative exists, loading is refused without changing the Pattern. Saved user
+patterns retain their exact notes. External targets receive the authored notes;
+Power Studio notes 60–65 are pack-specific, not General MIDI assignments.
+Library loading also installs missing extended-note tail/choke classifications
+from the selected kit while preserving explicit user classifications, in the same
+undoable edit.
+
 Genre names are compact creative labels for editable starting points, not claims of
 an authoritative historical transcription.
 

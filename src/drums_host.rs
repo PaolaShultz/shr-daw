@@ -53,6 +53,33 @@ pub fn discover_kits(directory: &Path) -> Vec<KitEntry> {
     kits
 }
 
+/// Read the selected kit's note map off the audio thread for library import.
+pub fn pattern_note_classes(
+    path: &Path,
+) -> Result<std::collections::BTreeMap<u8, crate::sequencer::DrumNoteClass>> {
+    use crate::sequencer::{DrumNoteClass, DrumRole};
+    let bytes = fs::read(path.join("manifest.json"))?;
+    let manifest = KitManifest::from_json(&bytes).map_err(anyhow::Error::msg)?;
+    Ok(manifest
+        .voices
+        .iter()
+        .map(|v| {
+            let mut class = DrumNoteClass::general_midi(v.trigger_note);
+            if v.trigger_note >= 60 {
+                class = DrumNoteClass::new(
+                    if v.family == "cymbal" && v.envelope.hold_ms + v.envelope.decay_ms > 500.0 {
+                        DrumRole::LongTail
+                    } else {
+                        DrumRole::Other
+                    },
+                    v.choke_group,
+                );
+            }
+            (v.trigger_note, class)
+        })
+        .collect())
+}
+
 struct CallbackData {
     engine: UnsafeCell<DrumEngine>,
     effects: UnsafeCell<DrumEffectStack>,
@@ -402,6 +429,35 @@ unsafe extern "C" fn shutdown_callback(argument: *mut c_void) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn published_power_studio_package_and_extended_note_classes_validate() {
+        let path =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("kits/power-studio.shrkit");
+        let kit = shr_drums::load_package(
+            &path,
+            shr_drums::ProjectKey::default(),
+            &shr_drums::KitTuning::default(),
+        )
+        .unwrap();
+        assert_eq!(kit.manifest.voices.len(), 30);
+        assert_eq!(kit.samples.len(), 171);
+        assert!(kit.decoded_sample_bytes() < 180 * 1024 * 1024);
+        let classes = super::pattern_note_classes(&path).unwrap();
+        assert_eq!(classes[&60].role, crate::sequencer::DrumRole::LongTail);
+        assert_eq!(classes[&62].role, crate::sequencer::DrumRole::LongTail);
+        assert_eq!(classes[&61].role, crate::sequencer::DrumRole::Other);
+        assert_eq!(classes[&63].choke_group, Some(1));
+        let catalogue = crate::drum_pattern::discover();
+        let available = classes.keys().copied().collect();
+        for entry in catalogue.into_iter().filter(|e| !e.user) {
+            let mut pattern = crate::drum_pattern::load(&entry).unwrap();
+            assert_eq!(
+                crate::drum_pattern::adapt_to_notes(&mut pattern, &available).unwrap(),
+                0
+            );
+        }
+    }
+
     use super::*;
     use crate::audio_graph::{default_drum_rack, EffectKind, InsertRack};
     use crate::dsp::allocation_test::assert_no_allocations;

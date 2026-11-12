@@ -132,7 +132,7 @@ defines validation and compatibility. Its
 owns sample provenance. `kits/cleared-kits.txt` is this repository's single
 public kit allowlist.
 
-SHR-DAW pins the public SHR Drums 0.2.0 source revision in both `Cargo.toml`
+SHR-DAW pins the public SHR Drums 0.2.1 source revision in both `Cargo.toml`
 and `install/compatibility.json`. Cargo compiles it into `shr`; the installer
 does not create a separate executable, service, or runtime source checkout.
 
@@ -153,6 +153,15 @@ Upstream sources are the
 [FreePats release](https://github.com/freepats/muldjordkit/releases/tag/2020-10-18),
 [FreePats kit page](https://freepats.zenvoid.org/Percussion/acoustic-drum-kit.html),
 and [DrumGizmo kit page](https://drumgizmo.org/wiki/doku.php?id=kits:muldjordkit).
+
+Power Studio combines processed Muldjord recordings under CC BY 4.0 with
+Virtuosity Drums recordings dedicated to CC0 by Versilian Studios and Karoryfer
+Samples, performed by Austin McMahon at Virtuosity Musical Instruments, Boston.
+Original synthesized additions are CC0. It is not a wholly CC0 pack. Its
+[credits](kits/power-studio.shrkit/CREDITS.md), upstream notices and per-WAV
+`PROVENANCE.json` identify the originals, licences, source hashes and changes.
+The reproducible recipe and release are owned by
+[SHR Drums](https://github.com/PaolaShultz/shr-drums/blob/main/packs/POWER_STUDIO.md).
 
 No other compiled `.shrkit`, source archive, or private review render is
 bundled. A local package's presence does not grant redistribution rights; add

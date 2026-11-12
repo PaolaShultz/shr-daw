@@ -16,6 +16,18 @@ so inspect live Git state before editing, staging, or committing.
 [Failure/recovery issue threads](CI.md#failure-and-recovery-notifications) track
 current default-branch CI incidents and explicitly close them after recovery.
 
+## Expanded drum palette
+
+Power Studio is a cleared 30-voice / 171-sample pack owned and released by
+[SHR Drums](https://github.com/PaolaShultz/shr-drums/blob/main/packs/POWER_STUDIO.md).
+This checkout ships the same package, with full mixed CC BY 4.0/CC0 source
+credits. All 120 factory rhythms use its enlarged palette; older internal kits
+receive explicit supported-note substitutions on factory LOAD. Saved user
+patterns remain exact. Extended note classes preserve user overrides.
+The kit selector and fill workflow are documented in
+[Tracker](TRACKER.md#drum-pattern-library-and-transpose); current musical data
+and software coverage are in [the pattern audit](DRUM_PATTERN_AUDIT.md).
+
 ## Current versions and formats
 
 | Owner | Current value |
